@@ -1,0 +1,156 @@
+{
+  "bayer2-00": {
+    "width": 4,
+    "height": 4,
+    "x": 0,
+    "y": 0,
+    "pixelRatio": 2
+  },
+  "bayer2-01": {
+    "width": 4,
+    "height": 4,
+    "x": 6,
+    "y": 0,
+    "pixelRatio": 2
+  },
+  "bayer2-02": {
+    "width": 4,
+    "height": 4,
+    "x": 12,
+    "y": 0,
+    "pixelRatio": 2
+  },
+  "bayer2-03": {
+    "width": 4,
+    "height": 4,
+    "x": 18,
+    "y": 0,
+    "pixelRatio": 2
+  },
+  "bayer2-04": {
+    "width": 4,
+    "height": 4,
+    "x": 24,
+    "y": 0,
+    "pixelRatio": 2
+  },
+  "bayer4-00": {
+    "width": 8,
+    "height": 8,
+    "x": 0,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-01": {
+    "width": 8,
+    "height": 8,
+    "x": 10,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-02": {
+    "width": 8,
+    "height": 8,
+    "x": 20,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-03": {
+    "width": 8,
+    "height": 8,
+    "x": 30,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-04": {
+    "width": 8,
+    "height": 8,
+    "x": 40,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-05": {
+    "width": 8,
+    "height": 8,
+    "x": 50,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-06": {
+    "width": 8,
+    "height": 8,
+    "x": 60,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-07": {
+    "width": 8,
+    "height": 8,
+    "x": 70,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-08": {
+    "width": 8,
+    "height": 8,
+    "x": 80,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-09": {
+    "width": 8,
+    "height": 8,
+    "x": 90,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-10": {
+    "width": 8,
+    "height": 8,
+    "x": 100,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-11": {
+    "width": 8,
+    "height": 8,
+    "x": 110,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-12": {
+    "width": 8,
+    "height": 8,
+    "x": 120,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-13": {
+    "width": 8,
+    "height": 8,
+    "x": 130,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-14": {
+    "width": 8,
+    "height": 8,
+    "x": 140,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-15": {
+    "width": 8,
+    "height": 8,
+    "x": 150,
+    "y": 6,
+    "pixelRatio": 2
+  },
+  "bayer4-16": {
+    "width": 8,
+    "height": 8,
+    "x": 160,
+    "y": 6,
+    "pixelRatio": 2
+  }
+}
