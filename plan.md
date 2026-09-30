@@ -1,0 +1,55 @@
+
+
+Plan:
+- map data acquisition
+    - 256px tiles at current zoom level from vt-raster-converter (e.g. http://localhost:8081/tiles/pebble_bw/7/32/47 )
+        - bw: crush to 1bpp (e.g. `convert image.png -colorspace gray -monochrome -depth 1 image_bw.png`, but need not use magick)
+        - color: crush to 2bpp (e.g. `convert image.png -colorspace gray -dither None -posterize 4 -alpha off -depth 2 image_gray.png`, but need not use magick)
+    - store and serve (locally for now)
+    - pkjs fetches needed tiles, trims to exact screen dimensions (current location on map centered), lz4 compress (raw image data), and transmits to watch
+        - round (chalk) - can we set up the image on the pkjs side so it can easily be written direct to the framebuffer?
+        - round 2 (gabbro) - square framebuffer for round screen - the corners will probably compress pretty well
+    - store
+        - TODO: store efficiently without fragmentation - estimate max size of compressed data and reserve?
+    - watch decompresses bits (bw) or writes black/white bytes (color watches), to framebuffer
+- radar data acquisition
+    - start with most recent data
+    - fetch 256px tiles at current zoom level needed to cover the screen from https://librewxr.net/docs/doc-viewer?doc=web-integration-guide
+    - if librewxr unavailable, then from https://www.rainviewer.com/api/weather-maps-api.html
+    - on bw, 1bit 4x4 Bayer dither (same dithering for rain or snow, black-on-transparent?); on color, convert to Pebble palette (black=transparent, probably only 2bpp), and trim to exact screen dimensions
+    - lz4 compress (raw image bits for bw, raw 2bit for color)
+        - TODO: can we add a special rle case in the compression for long runs of "transparent" (to save iterating over the pixels)? Maybe use an offset of 0 as a flag (followed by either 0..255 length code or two bytes for 0..65535)? Test compression ratio penalty and rendering speedup on flint hardware.
+    - transmit to watch and store - will need to be efficient about packing
+    - First time/invalidated fetch: repeat for previous and future ("nowcast", if available) radar data until reaching configured limits or memory is full, prioritizing temporaly near data
+    - When new data becomes available (every ten minutes?): replace the next "nowcast", if any, with the latest data. If more space is still needed, discard the temporaly furthest data.
+- data invalidation: location
+    - pkjs checks current location every ten minutes (on radar fetch)
+    - if current location is more than n px (say, 10) from center of screen, invalidate cached data and send fresh
+- data invalidation: zoom
+    - if the user request a new zoom level, we need to invalidate cached data and send fresh
+    - TODO: try to keep data for multiple zoom levels cached on the pkjs side (not preemptively, just if we already needed them), to avoid having to fetch it across the network again
+- configuration: TODO
+- render: TODO
+- controls
+    - up
+        - press: previous radar data frame (probably should also pause playback)
+        - hold: zoom (in or out?)
+    - select
+        - press: play/pause radar playback
+        - (stretch goal) hold: open location picker menu
+    - down
+        - press: next radar data frame
+        - hold: zoom
+- stretch goals
+    - labels-on-top
+        - extract place (town/city/state/country) labels from raster tiles, removing them from the raster image itself but inheriting the decision of when and where to render them (approximately) as separate data. (Discard other labels, e.g. bodies of water.)
+        - transmit raster data and label data to the watch separately
+        - render raster map, radar data, then place labels using native/pixel font (so they're visible on top of the radar data)
+            - how to best render text "halo"?
+    - watchface fork
+    - stored locations
+        - same behavior, but using a location configured in Clay and selected with a simple menu on the watch, instead of the user's current location
+        - top option in menu: current location
+    - dark mode
+        - bw: probably just invert
+        - color: probably just invert the map, maybe a separate color scheme for radar (?)
