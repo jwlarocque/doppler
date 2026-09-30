@@ -22,7 +22,7 @@ M4 = (
 )
 
 FG = (0, 0, 0, 255)
-BG = (0, 0, 0, 0)
+BG = (255, 255, 255, 255)
 
 
 def cell_image(matrix, level):
