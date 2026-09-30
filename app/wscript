@@ -33,6 +33,15 @@ def build(ctx):
     for platform in ctx.env.TARGET_PLATFORMS:
         ctx.env = ctx.all_envs[platform]
         ctx.set_group(ctx.env.PLATFORM_NAME)
+
+        ctx.env.append_value("CFLAGS", ["-O3"])
+        if ctx.env.PLATFORM_NAME in ["basalt", "chalk", "diorite", "flint"]:
+            ctx.env.append_value("CFLAGS", ["-mcpu=cortex-m4", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16", "-mthumb"])
+            ctx.env.append_value("LINKFLAGS", ["-mcpu=cortex-m4", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16", "-mthumb"])
+        if ctx.env.PLATFORM_NAME in ["emery", "gabbro"]:
+            ctx.env.append_value("CFLAGS", ["-mcpu=cortex-m33", "-mfloat-abi=hard", "-mfpu=fpv5-sp-d16", "-mthumb"])
+            ctx.env.append_value("LINKFLAGS", ["-mcpu=cortex-m33", "-mfloat-abi=hard", "-mfpu=fpv5-sp-d16", "-mthumb"])
+
         app_elf = '{}/pebble-app.elf'.format(ctx.env.BUILD_DIR)
         ctx.pbl_build(source=ctx.path.ant_glob('src/c/**/*.c'), target=app_elf, bin_type='app')
 
