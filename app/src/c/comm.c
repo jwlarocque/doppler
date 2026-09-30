@@ -3,8 +3,13 @@
 #include "comm.h"
 #include "map.h"
 
-#define INBOX_SIZE 2048
 #define OUTBOX_SIZE 128
+
+#if defined(PBL_PLATFORM_APLITE)
+#define INBOX_SIZE 512
+#else
+#define INBOX_SIZE 2048
+#endif
 
 static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *length_tuple = dict_find(iter, MESSAGE_KEY_MapLength);

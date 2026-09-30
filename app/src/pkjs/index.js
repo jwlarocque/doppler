@@ -38,7 +38,7 @@ Pebble.addEventListener('ready', function () {
     function fetcher(z, x, y, cb) {
       map.fetchArrayBuffer(map.tileUrl(z, x, y), cb);
     }
-    map.buildMapImage(fetcher, fix.lat, fix.lon, map.ZOOM, screen.w, screen.h,
+    map.buildMapImage(fetcher, fix.lat, fix.lon, map.ZOOM, screen,
       function (buildErr, res) {
         if (buildErr) {
           console.log('map build failed: ' + buildErr.message);
@@ -53,7 +53,8 @@ Pebble.addEventListener('ready', function () {
           (fix.test ? ' (test fix)' : ''));
         send.sendMap(packet, res.packed.length,
           function () { console.log('map sent'); },
-          function () { console.log('map send failed'); });
+          function () { console.log('map send failed'); },
+          screen.chunk);
       });
   });
 });

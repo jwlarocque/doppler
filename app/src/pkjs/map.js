@@ -8,13 +8,13 @@ var CHICAGO_LON = -87.6231;
 var USE_CHICAGO = true;
 
 var SCREENS = {
-  aplite: { w: 144, h: 168, bw: true },
-  basalt: { w: 144, h: 168, bw: false },
-  chalk: { w: 180, h: 180, bw: false },
-  diorite: { w: 144, h: 168, bw: true },
-  flint: { w: 144, h: 168, bw: true },
-  emery: { w: 200, h: 228, bw: false },
-  gabbro: { w: 260, h: 260, bw: false }
+  aplite: { w: 144, h: 168, bw: true, round: false, chunk: 250 },
+  basalt: { w: 144, h: 168, bw: false, round: false, chunk: 1500 },
+  chalk: { w: 180, h: 180, bw: false, round: true, chunk: 1500 },
+  diorite: { w: 144, h: 168, bw: true, round: false, chunk: 1500 },
+  flint: { w: 144, h: 168, bw: true, round: false, chunk: 1500 },
+  emery: { w: 200, h: 228, bw: false, round: false, chunk: 1500 },
+  gabbro: { w: 260, h: 260, bw: false, round: true, chunk: 1500 }
 };
 
 function screenFor(platform) {
@@ -73,6 +73,32 @@ function stitchAndCrop(decoded, tileX0, tileY0, offsetX, offsetY, screenW, scree
   return out;
 }
 
+function packTo2bpp(gray2, screenW, screenH) {
+  var stride = Math.ceil(screenW / 4);
+  var out = new Uint8Array(stride * screenH);
+  for (var y = 0; y < screenH; y++) {
+    for (var x = 0; x < screenW; x++) {
+      out[y * stride + (x >> 2)] |= (gray2[y * screenW + x] & 3) << (6 - 2 * (x & 3));
+    }
+  }
+  return out;
+}
+
+// clear pixels in the corners of round screens for better compression
+function zeroFillCorners(gray2, screenW, screenH) {
+  var cx = (screenW - 1) / 2;
+  var cy = (screenH - 1) / 2;
+  var r = screenW / 2;
+  for (var y = 0; y < screenH; y++) {
+    for (var x = 0; x < screenW; x++) {
+      var dx = x - cx;
+      var dy = y - cy;
+      if (dx * dx + dy * dy > r * r) gray2[y * screenW + x] = 0;
+    }
+  }
+  return gray2;
+}
+
 // Pack 2bpp grays to 1bpp rows matching GBitmapFormat1Bit:
 // byte = x/8, bit = x%8
 function crushTo1bpp(gray2, screenW, screenH) {
@@ -118,7 +144,9 @@ function tileUrl(z, x, y) {
   return TILE_URL + '/' + z + '/' + x + '/' + y + '.png';
 }
 
-function buildMapImage(fetcher, lat, lon, zoom, screenW, screenH, callback) {
+function buildMapImage(fetcher, lat, lon, zoom, screen, callback) {
+  var screenW = screen.w;
+  var screenH = screen.h;
   var center = latLonToWorldPixel(lat, lon, zoom);
   var view = tilesForViewport(center.x, center.y, screenW, screenH);
   var tileX0 = Math.floor(view.left / TILE_SIZE);
@@ -143,7 +171,9 @@ function buildMapImage(fetcher, lat, lon, zoom, screenW, screenH, callback) {
         }
         var gray2 = stitchAndCrop(decoded, tileX0, tileY0, view.offsetX, view.offsetY,
           screenW, screenH);
-        var packed = crushTo1bpp(gray2, screenW, screenH);
+        if (screen.round) zeroFillCorners(gray2, screenW, screenH);
+        var packed = screen.bw ? crushTo1bpp(gray2, screenW, screenH)
+          : packTo2bpp(gray2, screenW, screenH);
         callback(null, {
           packed: packed,
           gray2: gray2,
@@ -169,6 +199,8 @@ module.exports = {
   tilesForViewport: tilesForViewport,
   stitchAndCrop: stitchAndCrop,
   crushTo1bpp: crushTo1bpp,
+  packTo2bpp: packTo2bpp,
+  zeroFillCorners: zeroFillCorners,
   fetchArrayBuffer: fetchArrayBuffer,
   tileUrl: tileUrl,
   buildMapImage: buildMapImage

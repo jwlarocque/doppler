@@ -3,10 +3,6 @@
 #include "lz4.h"
 #include "map.h"
 
-// raw framebuffer plus lz4 worst-case overhead (length + length / 255 + 16),
-// rounded up
-#define MAP_COMPRESSED_MAX 3072
-
 static uint8_t *s_data;
 static int32_t s_total;
 static int32_t s_received;

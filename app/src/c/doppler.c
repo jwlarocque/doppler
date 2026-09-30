@@ -12,10 +12,36 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     return;
   }
   GBitmap *framebuffer = graphics_capture_frame_buffer(ctx);
+  if (!framebuffer) {
+    return;
+  }
+  const uint8_t *raw = map_raw();
   GRect bounds = layer_get_bounds(layer);
-  for (int y = 0; y < bounds.size.h; y++) {
-    GBitmapDataRowInfo info = gbitmap_get_data_row_info(framebuffer, y);
-    memcpy(&info.data[info.min_x / 8], map_raw() + y * MAP_STRIDE, MAP_STRIDE);
+  int16_t height = bounds.size.h;
+  if (height > MAP_HEIGHT) {
+    height = MAP_HEIGHT;
+  }
+#ifdef PBL_COLOR
+  const uint8_t shades[4] = {
+    GColorBlack.argb, GColorDarkGray.argb, GColorLightGray.argb, GColorWhite.argb
+  };
+#endif
+  for (int16_t y = 0; y < height; y++) {
+    GBitmapDataRowInfo info = gbitmap_get_data_row_info(framebuffer, (uint16_t)y);
+#ifdef PBL_COLOR
+    for (int16_t x = info.min_x; x <= info.max_x; x++) {
+      uint8_t packed = raw[y * MAP_STRIDE + (x >> 2)];
+      uint8_t gray = (packed >> (6 - 2 * (x & 3))) & 3;
+      info.data[x] = shades[gray];
+    }
+#else
+    // bw watches are rectangular, and our 1bpp data is already in the
+    // framebuffer format, so we can just copy whole rows
+    int16_t first = info.min_x >> 3;
+    int16_t last = info.max_x >> 3;
+    memcpy(&info.data[first], &raw[y * MAP_STRIDE + first],
+           (size_t)(last - first + 1));
+#endif
   }
   graphics_release_frame_buffer(ctx, framebuffer);
 }

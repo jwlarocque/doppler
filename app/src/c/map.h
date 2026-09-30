@@ -2,10 +2,20 @@
 
 #include <pebble.h>
 
-// 1bpp framebuffer image
-#define MAP_RAW_BYTES (PBL_DISPLAY_WIDTH * PBL_DISPLAY_HEIGHT / 8)
-// row stride in bytes
-#define MAP_STRIDE (PBL_DISPLAY_WIDTH / 8)
+#define MAP_WIDTH (PBL_DISPLAY_WIDTH)
+#define MAP_HEIGHT (PBL_DISPLAY_HEIGHT)
+
+#ifdef PBL_COLOR
+// 2bpp packed rows
+#define MAP_STRIDE ((PBL_DISPLAY_WIDTH + 3) / 4)
+#else
+// 1bpp rows matching GBitmapFormat1Bit
+#define MAP_STRIDE ((PBL_DISPLAY_WIDTH + 7) / 8)
+#endif
+// decompressed image size in bytes
+#define MAP_RAW_BYTES (MAP_STRIDE * PBL_DISPLAY_HEIGHT)
+// lz4 worst case
+#define MAP_COMPRESSED_MAX (MAP_RAW_BYTES + MAP_RAW_BYTES / 255 + 16)
 
 // Compressed map packet store. Holds one LZ4 raw block until decompressed.
 void map_begin(int32_t total);
