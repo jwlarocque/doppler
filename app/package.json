@@ -29,7 +29,12 @@
     "watchapp": {
       "watchface": false
     },
-    "messageKeys": [],
+    "messageKeys": [
+      "MapLength",
+      "MapChunk",
+      "MapIndex",
+      "MapDone"
+    ],
     "resources": {
       "media": []
     }

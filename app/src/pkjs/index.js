@@ -1,5 +1,6 @@
 var map = require('./map.js');
 var lz4 = require('./lz4.js');
+var send = require('./send.js');
 
 function currentFix(useChicago, callback) {
   if (useChicago || typeof navigator === 'undefined' ||
@@ -50,6 +51,9 @@ Pebble.addEventListener('ready', function () {
           ' raw=' + res.packed.length +
           ' tx=' + packet.length + ' (lz4-block, ' + ratio + '%)' +
           (fix.test ? ' (test fix)' : ''));
+        send.sendMap(packet, res.packed.length,
+          function () { console.log('map sent'); },
+          function () { console.log('map send failed'); });
       });
   });
 });
