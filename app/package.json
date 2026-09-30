@@ -2,9 +2,16 @@
   "name": "doppler",
   "author": "John LaRocque",
   "version": "0.1.0",
-  "keywords": ["radar", "weather", "doppler", "map"],
+  "keywords": [
+    "radar",
+    "weather",
+    "doppler",
+    "map"
+  ],
   "private": false,
-  "dependencies": {},
+  "dependencies": {
+    "pako": "^3.0.2"
+  },
   "pebble": {
     "displayName": "Doppler",
     "uuid": "8386d43d-a449-41f1-8f04-594b38495058",
@@ -21,8 +28,7 @@
     "watchapp": {
       "watchface": false
     },
-    "messageKeys": [
-    ],
+    "messageKeys": [],
     "resources": {
       "media": []
     }
