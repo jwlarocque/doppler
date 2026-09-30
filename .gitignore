@@ -1,3 +1,4 @@
 png_tiles
 *.pyc
 app/node_modules
+app/build

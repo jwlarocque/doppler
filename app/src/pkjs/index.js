@@ -1,4 +1,5 @@
 var map = require('./map.js');
+var lz4 = require('./lz4.js');
 
 function currentFix(useChicago, callback) {
   if (useChicago || typeof navigator === 'undefined' ||
@@ -42,9 +43,12 @@ Pebble.addEventListener('ready', function () {
           console.log('map build failed: ' + buildErr.message);
           return;
         }
+        var packet = lz4.compress(res.packed);
+        var ratio = (100 * packet.length / res.packed.length).toFixed(1);
         console.log('map ' + res.width + 'x' + res.height +
           ' tiles=' + res.tiles +
-          ' bytes=' + res.packed.length +
+          ' raw=' + res.packed.length +
+          ' tx=' + packet.length + ' (lz4-block, ' + ratio + '%)' +
           (fix.test ? ' (test fix)' : ''));
       });
   });
