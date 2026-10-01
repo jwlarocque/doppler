@@ -10,7 +10,6 @@
   ],
   "private": false,
   "dependencies": {
-    "lz4js": "^0.2.0",
     "pako": "^3.0.2"
   },
   "pebble": {
