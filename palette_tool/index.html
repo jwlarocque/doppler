@@ -1,0 +1,417 @@
+<!-- note: vibe-coded; may have issues -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pebble radar palette tool</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #111; color: #ddd; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 14px; margin: 18px 0 6px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; background: #1c1c1c; padding: 12px; border-radius: 8px; }
+  .controls label { display: flex; flex-direction: column; font-size: 12px; gap: 4px; }
+  .controls input, .controls select { background: #2a2a2a; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 6px; }
+  .strip { display: flex; width: 100%; height: 44px; border: 1px solid #555; border-radius: 6px; overflow: hidden; margin-top: 8px; }
+  .strip .seg { flex: 1 1 0; cursor: pointer; padding: 0; border: none; }
+  .strip .seg.sel { outline: 3px solid #fff; outline-offset: -3px; }
+  .pickers { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 12px; }
+  .pickers > div { flex: 1; min-width: 280px; }
+  .pickers > div.active h2 { color: #fff; }
+  .swatches { display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; margin-top: 6px; }
+  .swatches button { width: 100%; aspect-ratio: 1; border: 2px solid transparent; border-radius: 3px; cursor: pointer; padding: 0; }
+  .swatches button.sel { border-color: #fff; }
+  #selInfo { font-size: 12px; color: #bbb; margin-top: 6px; }
+  .scenes { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 12px; }
+  .scene { background: #1c1c1c; padding: 10px; border-radius: 8px; }
+  .pair { display: flex; gap: 12px; }
+  figure { margin: 0; }
+  figcaption { font-size: 12px; text-align: center; margin-top: 4px; color: #bbb; }
+  canvas { width: 256px; height: 256px; image-rendering: pixelated; background: repeating-conic-gradient(#222 0 25%, #333 0 50%) 0 0/16px 16px; border: 1px solid #555; }
+  #export { width: 100%; min-height: 180px; background: #0c0c0c; color: #cfc; font-family: monospace; font-size: 12px; }
+  .hint { font-size: 12px; color: #999; }
+  button { background: #2a5; color: #061; font-weight: bold; border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>Pebble 16-color radar palette tool (1 transparent + 15 data)</h1>
+<p class="hint">Serve repo root (<code>python3 -m http.server</code>) then open <code>palette_tool/index.html</code>.
+Gray assets decode: <code>g&lt;128 &rarr; rain, dBZ=g-32</code>; <code>g&ge;128 &rarr; snow, dBZ=g-160</code>; alpha 0 &rarr; transparent.
+Low end hides (<code>dBZ &lt; start &rarr; transparent</code>); high end clamps to top band.
+dBZ boost previews stronger/weaker weather (transparent + snow-backdrop gray 128 never boosted).</p>
+
+<div class="controls">
+  <label>Rain bands N (0..15, rest snow)<input id="nRain" type="number" min="0" max="15" step="1" value="8"></label>
+  <label>Rain start dBZ<input id="rainStart" type="number" step="0.5" value="10"></label>
+  <label>Rain end dBZ<input id="rainEnd" type="number" step="0.5" value="55"></label>
+  <label>Snow start dBZ<input id="snowStart" type="number" step="0.5" value="10"></label>
+  <label>Snow end dBZ<input id="snowEnd" type="number" step="0.5" value="35"></label>
+  <label>LibreWXR scheme<select id="scheme"></select></label>
+  <label>Map underneath<input id="showMap" type="checkbox" checked></label>
+  <label>Invert map (dark mode)<input id="invertMap" type="checkbox"></label>
+  <label>Strength +<span id="dbzBoostVal">0</span> dBZ<input id="dbzBoost" type="range" min="-20" max="20" step="0.5" value="0"></label>
+  <button id="exportBtn">Export C array</button>
+</div>
+
+<h2>Palette band (<span id="bandCounts"></span>) — click a color to select it</h2>
+<div class="strip" id="strip"></div>
+<div id="selInfo"></div>
+<div class="pickers">
+  <div id="rainPickerBox"><h2>Rain picker</h2><div class="swatches" id="rainPicker"></div></div>
+  <div id="snowPickerBox"><h2>Snow picker</h2><div class="swatches" id="snowPicker"></div></div>
+</div>
+
+<div class="scenes">
+  <div class="scene">
+    <h2>Rain tile 7/32/47</h2>
+    <div class="pair">
+      <figure><canvas id="rainLibre" width="256" height="256"></canvas><figcaption>LibreWXR reference</figcaption></figure>
+      <figure><canvas id="rainPebble" width="256" height="256"></canvas><figcaption>Pebble preview</figcaption></figure>
+    </div>
+  </div>
+  <div class="scene">
+    <h2>Snow tile 4/1/4 (mixed rain+snow)</h2>
+    <div class="pair">
+      <figure><canvas id="snowLibre" width="256" height="256"></canvas><figcaption>LibreWXR reference</figcaption></figure>
+      <figure><canvas id="snowPebble" width="256" height="256"></canvas><figcaption>Pebble preview</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<h2>Export (massage later)</h2>
+<textarea id="export" readonly></textarea>
+<p class="hint" id="status">loading…</p>
+
+<script>
+"use strict";
+// Sunlight-corrected palette
+const PEBBLE_RAW = ["#000000","#000055","#0000AA","#0000FF","#005500","#005555","#0055AA","#0055FF","#00AA00","#00AA55","#00AAAA","#00AAFF","#00FF00","#00FF55","#00FFAA","#00FFFF","#550000","#550055","#5500AA","#5500FF","#555500","#555555","#5555AA","#5555FF","#55AA00","#55AA55","#55AAAA","#55AAFF","#55FF00","#55FF55","#55FFAA","#55FFFF","#AA0000","#AA0055","#AA00AA","#AA00FF","#AA5500","#AA5555","#AA55AA","#AA55FF","#AAAA00","#AAAA55","#AAAAAA","#FFFFFF","#AAAAFF","#AAFF00","#AAFF55","#AAFFAA","#AAFFFF","#FF0000","#FF0055","#FF00AA","#FF00FF","#FF5500","#FF5555","#FF55AA","#FF55FF","#FFAA00","#FFAA55","#FFAAAA","#FFAAFF","#FFFF00","#FFFF55","#FFFFAA"];
+const PREVIEW_MAP = {"#000000":"#000000","#000055":"#001e41","#0000AA":"#004387","#0000FF":"#0068ca","#005500":"#2b4a2c","#005555":"#27514f","#0055AA":"#16638d","#0055FF":"#007dce","#00AA00":"#5e9860","#00AA55":"#5c9b72","#00AAAA":"#57a5a2","#00AAFF":"#4cb4db","#00FF00":"#8ee391","#00FF55":"#8ee69e","#00FFAA":"#8aebc0","#00FFFF":"#84f5f1","#550000":"#4a161b","#550055":"#482748","#5500AA":"#40488a","#5500FF":"#2f6bcc","#555500":"#564e36","#555555":"#545454","#5555AA":"#4f6790","#5555FF":"#4180d0","#55AA00":"#759a64","#55AA55":"#759d76","#55AAAA":"#71a6a4","#55AAFF":"#69b5dd","#55FF00":"#9ee594","#55FF55":"#9de7a0","#55FFAA":"#9becc2","#55FFFF":"#95f6f2","#AA0000":"#99353f","#AA0055":"#983e5a","#AA00AA":"#955694","#AA00FF":"#8f74d2","#AA5500":"#9d5b4d","#AA5555":"#9d6064","#AA55AA":"#9a7099","#AA55FF":"#9587d5","#AAAA00":"#afa072","#AAAA55":"#aea382","#AAAAAA":"#ababab","#FFFFFF":"#ffffff","#AAAAFF":"#a7bae2","#AAFF00":"#c9e89d","#AAFF55":"#c9eaa7","#AAFFAA":"#c7f0c8","#AAFFFF":"#c3f9f7","#FF0000":"#e35462","#FF0055":"#e25874","#FF00AA":"#e16aa3","#FF00FF":"#de83dc","#FF5500":"#e66e6b","#FF5555":"#e6727c","#FF55AA":"#e37fa7","#FF55FF":"#e194df","#FFAA00":"#f1aa86","#FFAA55":"#f1ad93","#FFAAAA":"#efb5b8","#FFAAFF":"#ecc3eb","#FFFF00":"#ffeeab","#FFFF55":"#fff1b5","#FFFFAA":"#fff6d3"};
+
+const RAIN_POOL = ["#0055FF","#00AAFF","#00FF55","#55FF00","#FFFF00","#FFAA00","#FF5500","#FF0000","#FF00FF","#AA00FF","#5500FF","#00FFFF","#00AA00","#555555","#AAAAAA","#FFFFFF"];
+const SNOW_POOL = ["#AAAAFF","#AAFFFF","#FFFFFF","#FFFFAA","#FFAAAA","#FFAAFF","#FF55FF","#55AAFF","#55FFFF","#00FFFF","#5555FF","#AA55FF","#AAAAAA","#FFFF55","#FFFF00"];
+const DEFAULT_SCHEME = 7;
+
+const state = { nRain: 8, rainStart: 10, rainEnd: 55, snowStart: 10, snowEnd: 35,
+  scheme: DEFAULT_SCHEME, showMap: true, invertMap: false, dbzBoost: 0, rainColors: [], snowColors: [],
+  selRain: 0, selSnow: 0 };
+for (let i = 0; i < 15; i++) state.rainColors.push(RAIN_POOL[i % RAIN_POOL.length]);
+for (let i = 0; i < 15; i++) state.snowColors.push(SNOW_POOL[i % SNOW_POOL.length]);
+
+let schemeNames = [], rainLUT = {}, snowLUT = {};
+let scenes = {}; // key -> {precip: ImageData, map: ImageData|null}
+
+function hexToRgb(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+function parseRgba(hex) {
+  const h = hex.replace("#","");
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16), parseInt(h.slice(6,8),16)];
+}
+
+// Decode one asset pixel into {phase, dbz} or null for transparent.
+// Gray 128 (snow below-floor backdrop) and alpha 0 carry no echo:
+// they are never boosted and stay hidden (pebble) / as-is (reference).
+function decodePixel(r, a) {
+  if (a === 0) return null;
+  if (r < 128) return { phase: "rain", dbz: r - 32, boostable: true };
+  if (r === 128) return { phase: "snow", dbz: r - 160, boostable: false };
+  return { phase: "snow", dbz: r - 160, boostable: true };
+}
+function boostedDbz(dec) {
+  return dec.dbz + (dec.boostable ? state.dbzBoost : 0);
+}
+function rawForDbz(dbz) {
+  return Math.max(0, Math.min(255, Math.round((dbz + 32) * 2)));
+}
+function rawForRef(g, phase) {
+  if (phase === "rain") return Math.max(0, Math.min(255, 2 * g));
+  return Math.max(0, Math.min(255, 2 * (g - 128)));
+}
+
+async function fetchText(urls) {
+  for (const u of urls) {
+    try { const r = await fetch(u); if (r.ok) return await r.text(); } catch (e) {}
+  }
+  throw new Error("fetch failed: " + urls.join(", "));
+}
+function loadImage(urls) {
+  return new Promise((resolve, reject) => {
+    let i = 0;
+    const tryNext = () => {
+      if (i >= urls.length) return reject(new Error("img failed: " + urls.join(",")));
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => { i++; tryNext(); };
+      img.src = urls[i];
+    };
+    tryNext();
+  });
+}
+function imageDataOf(img) {
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  return ctx.getImageData(0, 0, c.width, c.height);
+}
+
+function buildLUTs(csvText) {
+  const lines = csvText.trim().split(/\r?\n/);
+  const header = lines[0].split(",");
+  schemeNames = header.slice(1);
+  const rainRows = [], snowRows = [];
+  let n = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i].split(",");
+    if (!row[0] || row[0].trim() === "") continue;
+    if (n < 128) rainRows.push(row); else snowRows.push(row);
+    n++;
+  }
+  for (let s = 0; s < schemeNames.length; s++) {
+    const rl = [], sl = [];
+    for (let p = 0; p < 256; p++) {
+      const idx = Math.floor(p / 2);
+      rl.push(idx < rainRows.length ? parseRgba(rainRows[idx][s+1]) : [0,0,0,0]);
+      sl.push(idx < snowRows.length ? parseRgba(snowRows[idx][s+1]) : [0,0,0,0]);
+    }
+    rainLUT[s] = rl; snowLUT[s] = sl;
+  }
+  const sel = document.getElementById("scheme");
+  sel.innerHTML = "";
+  schemeNames.forEach((name, s) => {
+    const o = document.createElement("option");
+    o.value = s; o.textContent = s + ": " + name;
+    sel.appendChild(o);
+  });
+  sel.value = state.scheme;
+}
+
+function bandIndex(dbz, start, end, count) {
+  if (count <= 0) return -1;
+  if (dbz < start) return -1; // hidden low end
+  if (end <= start) return count - 1;
+  const w = (end - start) / count;
+  let b = Math.floor((dbz - start) / w);
+  if (b < 0) b = 0;
+  if (b >= count) b = count - 1; // clamped top end
+  return b;
+}
+
+function renderInto(canvas, sceneKey, mode) {
+  const canvasEl = canvas;
+  const ctx = canvasEl.getContext("2d");
+  const sc = scenes[sceneKey];
+  if (!sc || !sc.precip) return;
+  const { width: W, height: H } = sc.precip;
+  if (canvasEl.width !== W || canvasEl.height !== H) { canvasEl.width = W; canvasEl.height = H; }
+  const out = ctx.createImageData(W, H);
+  const pd = sc.precip.data, md = sc.map ? sc.map.data : null, od = out.data;
+  const nR = state.nRain, nS = 15 - nR;
+  for (let i = 0; i < W * H; i++) {
+    const r = pd[i*4], a = pd[i*4+3];
+    let done = false;
+    if (mode === "pebble") {
+      const dec = decodePixel(r, a);
+      if (dec) {
+        const dbz = boostedDbz(dec);
+        let raw = null;
+        if (dec.phase === "rain") {
+          const b = bandIndex(dbz, state.rainStart, state.rainEnd, nR);
+          if (b >= 0) raw = state.rainColors[b];
+        } else {
+          const b = bandIndex(dbz, state.snowStart, state.snowEnd, nS);
+          if (b >= 0) raw = state.snowColors[b];
+        }
+        if (raw) {
+          const pv = PREVIEW_MAP[raw] || raw, c = hexToRgb(pv);
+          od[i*4]=c[0]; od[i*4+1]=c[1]; od[i*4+2]=c[2]; od[i*4+3]=255;
+          done = true;
+        }
+      }
+    } else {
+      const dec = decodePixel(r, a);
+      if (dec) {
+        const raw = (dec.boostable && state.dbzBoost !== 0)
+          ? rawForDbz(boostedDbz(dec))
+          : rawForRef(r, dec.phase);
+        const lut = dec.phase === "rain" ? rainLUT[state.scheme] : snowLUT[state.scheme];
+        const c = lut ? lut[raw] : null;
+        if (c && c[3] > 0) {
+          od[i*4]=c[0]; od[i*4+1]=c[1]; od[i*4+2]=c[2]; od[i*4+3]=c[3];
+          done = true;
+        }
+      }
+    }
+    if (!done) {
+      if (state.showMap && md) {
+        const inv = state.invertMap;
+        od[i*4]=inv ? 255-md[i*4] : md[i*4];
+        od[i*4+1]=inv ? 255-md[i*4+1] : md[i*4+1];
+        od[i*4+2]=inv ? 255-md[i*4+2] : md[i*4+2];
+        od[i*4+3]=md[i*4+3];
+      } else {
+        od[i*4+3]=0;
+      }
+    }
+  }
+  ctx.imageSmoothingEnabled = false;
+  ctx.putImageData(out, 0, 0);
+}
+
+function bandRangeText(start, end, count, i) {
+  if (count <= 0) return "";
+  if (end <= start) return i === count-1 ? "clamped top" : "";
+  const w = (end - start) / count;
+  const lo = start + i * w, hi = start + (i + 1) * w;
+  return (i === count-1 ? "[" + lo.toFixed(1) + ", " + end.toFixed(1) + "] clamp hi"
+                       : "[" + lo.toFixed(1) + ", " + hi.toFixed(1) + ")");
+}
+
+function clampSelections() {
+  const nR = state.nRain, nS = 15 - nR;
+  if (nR <= 0) state.selRain = 0;
+  else state.selRain = Math.max(0, Math.min(nR - 1, state.selRain));
+  if (nS <= 0) state.selSnow = 0;
+  else state.selSnow = Math.max(0, Math.min(nS - 1, state.selSnow));
+}
+
+function swatchGrid(container, currentRaw, onPick) {
+  container.innerHTML = "";
+  for (const raw of PEBBLE_RAW) {
+    const b = document.createElement("button");
+    b.title = raw + " → " + (PREVIEW_MAP[raw] || raw);
+    b.style.background = PREVIEW_MAP[raw] || raw;
+    if (raw.toUpperCase() === String(currentRaw).toUpperCase()) b.classList.add("sel");
+    b.onclick = () => onPick(raw);
+    container.appendChild(b);
+  }
+}
+
+function renderStripAndPickers() {
+  clampSelections();
+  const nR = state.nRain, nS = 15 - nR;
+  document.getElementById("bandCounts").textContent =
+    "1 transparent + " + nR + " rain + " + nS + " snow";
+  const strip = document.getElementById("strip");
+  strip.innerHTML = "";
+  for (let i = 0; i < nR; i++) {
+    const raw = state.rainColors[i];
+    const seg = document.createElement("button");
+    seg.className = "seg" + (i === state.selRain ? " sel" : "");
+    seg.title = "rain band " + i + " (pal " + (1+i) + ") " +
+      bandRangeText(state.rainStart, state.rainEnd, nR, i) +
+      " raw " + raw + " preview " + (PREVIEW_MAP[raw] || raw);
+    seg.style.background = PREVIEW_MAP[raw] || raw;
+    seg.onclick = () => { state.selRain = i; renderAll(); };
+    strip.appendChild(seg);
+  }
+  for (let i = 0; i < nS; i++) {
+    const raw = state.snowColors[i];
+    const seg = document.createElement("button");
+    seg.className = "seg" + (i === state.selSnow ? " sel" : "");
+    seg.title = "snow band " + i + " (pal " + (1+nR+i) + ") " +
+      bandRangeText(state.snowStart, state.snowEnd, nS, i) +
+      " raw " + raw + " preview " + (PREVIEW_MAP[raw] || raw);
+    seg.style.background = PREVIEW_MAP[raw] || raw;
+    seg.onclick = () => { state.selSnow = i; renderAll(); };
+    strip.appendChild(seg);
+  }
+  const info = [];
+  if (nR > 0) info.push("rain sel #" + (1 + state.selRain) + " " +
+    bandRangeText(state.rainStart, state.rainEnd, nR, state.selRain) +
+    " = " + state.rainColors[state.selRain]);
+  else info.push("rain: 0 bands");
+  if (nS > 0) info.push("snow sel #" + (1 + nR + state.selSnow) + " " +
+    bandRangeText(state.snowStart, state.snowEnd, nS, state.selSnow) +
+    " = " + state.snowColors[state.selSnow]);
+  else info.push("snow: 0 bands");
+  document.getElementById("selInfo").textContent = info.join("  |  ");
+  swatchGrid(document.getElementById("rainPicker"), nR > 0 ? state.rainColors[state.selRain] : null, (raw) => {
+    if (nR <= 0) return;
+    state.rainColors[state.selRain] = raw;
+    renderAll();
+  });
+  swatchGrid(document.getElementById("snowPicker"), nS > 0 ? state.snowColors[state.selSnow] : null, (raw) => {
+    if (nS <= 0) return;
+    state.snowColors[state.selSnow] = raw;
+    renderAll();
+  });
+}
+
+function renderAll() {
+  renderStripAndPickers();
+  renderInto(document.getElementById("rainLibre"), "rain", "libre");
+  renderInto(document.getElementById("rainPebble"), "rain", "pebble");
+  renderInto(document.getElementById("snowLibre"), "snow", "libre");
+  renderInto(document.getElementById("snowPebble"), "snow", "pebble");
+}
+
+function exportC() {
+  const nR = state.nRain, nS = 15 - state.nRain;
+  const pal = ["0x000000"]; // idx 0 transparent; color irrelevant
+  for (let i = 0; i < nR; i++) pal.push(state.rainColors[i].replace("#","0x"));
+  for (let i = 0; i < nS; i++) pal.push(state.snowColors[i].replace("#","0x"));
+  const L = [];
+  L.push("// Pebble 16-color radar palette (draft): 1 transparent + " + nR + " rain + " + nS + " snow");
+  L.push("// rain dBZ [" + state.rainStart + ", " + state.rainEnd + "] equal-width, dBZ<start hidden, high clamped");
+  L.push("// snow dBZ [" + state.snowStart + ", " + state.snowEnd + "] equal-width, dBZ<start hidden, high clamped");
+  if (state.dbzBoost !== 0) L.push("// NOTE: preview dBZ boost " + (state.dbzBoost > 0 ? "+" : "") + state.dbzBoost + " dB active — NOT part of export");
+  for (let i = 0; i < nR; i++) L.push("// rain band " + i + " (pal " + (1+i) + ") " + bandRangeText(state.rainStart, state.rainEnd, nR, i) + " raw " + state.rainColors[i] + " preview " + (PREVIEW_MAP[state.rainColors[i]]||""));
+  for (let i = 0; i < nS; i++) L.push("// snow band " + i + " (pal " + (1+nR+i) + ") " + bandRangeText(state.snowStart, state.snowEnd, nS, i) + " raw " + state.snowColors[i] + " preview " + (PREVIEW_MAP[state.snowColors[i]]||""));
+  L.push("static const uint32_t RADAR_PALETTE_RAW[16] = {");
+  L.push("  " + pal.join(", "));
+  L.push("};");
+  document.getElementById("export").value = L.join("\n");
+}
+
+function bindControls() {
+  const num = (id, fn) => document.getElementById(id).addEventListener("input", e => { fn(parseFloat(e.target.value)); renderAll(); });
+  document.getElementById("nRain").addEventListener("input", e => {
+    let v = parseInt(e.target.value, 10);
+    if (isNaN(v)) return;
+    state.nRain = Math.max(0, Math.min(15, v));
+    renderAll();
+  });
+  num("rainStart", v => state.rainStart = v);
+  num("rainEnd", v => state.rainEnd = v);
+  num("snowStart", v => state.snowStart = v);
+  num("snowEnd", v => state.snowEnd = v);
+  document.getElementById("scheme").addEventListener("change", e => { state.scheme = parseInt(e.target.value,10); renderAll(); });
+  document.getElementById("showMap").addEventListener("change", e => { state.showMap = e.target.checked; renderAll(); });
+  document.getElementById("invertMap").addEventListener("change", e => { state.invertMap = e.target.checked; renderAll(); });
+  document.getElementById("dbzBoost").addEventListener("input", e => {
+    state.dbzBoost = parseFloat(e.target.value) || 0;
+    document.getElementById("dbzBoostVal").textContent = (state.dbzBoost > 0 ? "+" : "") + state.dbzBoost;
+    renderAll();
+  });
+  document.getElementById("exportBtn").addEventListener("click", exportC);
+}
+
+async function main() {
+  bindControls();
+  const status = document.getElementById("status");
+  try {
+    const csv = await fetchText(["assets/color_table.csv", "../LibreWXR/src/librewxr/colors/color_table.csv", "color_table.csv"]);
+    buildLUTs(csv);
+    const jobs = [
+      ["rain", ["assets/7.32.47.0.0_1_rain.png", "palette_tool/assets/7.32.47.0.0_1_rain.png"],
+               ["assets/7.32.47_map.png", "palette_tool/assets/7.32.47_map.png"]],
+      ["snow", ["assets/4.1.4.0.0_1_snow.png", "palette_tool/assets/4.1.4.0.0_1_snow.png"],
+               ["assets/4.1.4_map.png", "palette_tool/assets/4.1.4_map.png"]],
+    ];
+    for (const [key, precipUrls, mapUrls] of jobs) {
+      const p = await loadImage(precipUrls);
+      let m = null;
+      try { m = await loadImage(mapUrls); } catch (e) { m = null; }
+      scenes[key] = { precip: imageDataOf(p), map: m ? imageDataOf(m) : null };
+    }
+    status.textContent = "loaded.";
+    renderAll();
+  } catch (e) {
+    status.textContent = "load failed: " + e.message + " — serve repo root and reload.";
+  }
+}
+main();
+</script>
+</body>
+</html>
