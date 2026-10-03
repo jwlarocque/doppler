@@ -1,4 +1,7 @@
-png_tiles
+png_tiles_dither
+png_tiles_simple
+magick_tests
 *.pyc
 app/node_modules
 app/build
+.vscode

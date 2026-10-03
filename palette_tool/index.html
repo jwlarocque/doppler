@@ -37,7 +37,9 @@
 <p class="hint">Serve repo root (<code>python3 -m http.server</code>) then open <code>palette_tool/index.html</code>.
 Gray assets decode: <code>g&lt;128 &rarr; rain, dBZ=g-32</code>; <code>g&ge;128 &rarr; snow, dBZ=g-160</code>; alpha 0 &rarr; transparent.
 Low end hides (<code>dBZ &lt; start &rarr; transparent</code>); high end clamps to top band.
-dBZ boost previews stronger/weaker weather (transparent + snow-backdrop gray 128 never boosted).</p>
+dBZ boost previews stronger/weaker weather (transparent + snow-backdrop gray 128 never boosted).
+Dither mixes <code>band[i] &harr; band[i+1]</code> (and <code>transparent &harr; band 0</code>) via 2x2 Bayer on boosted dBZ.
+BW mode dithers each phase's range to a shared transparent/opaque ramp (black, white when dark) with 2x2 or 4x4 Bayer.</p>
 
 <div class="controls">
   <label>Rain bands N (0..15, rest snow)<input id="nRain" type="number" min="0" max="15" step="1" value="8"></label>
@@ -49,6 +51,13 @@ dBZ boost previews stronger/weaker weather (transparent + snow-backdrop gray 128
   <label>Map underneath<input id="showMap" type="checkbox" checked></label>
   <label>Invert map (dark mode)<input id="invertMap" type="checkbox"></label>
   <label>Strength +<span id="dbzBoostVal">0</span> dBZ<input id="dbzBoost" type="range" min="-20" max="20" step="0.5" value="0"></label>
+  <label>Dither<input id="dither" type="checkbox"></label>
+  <label>Dither strength <span id="ditherStrengthVal">1.00</span><input id="ditherStrength" type="range" min="0" max="1" step="0.05" value="1" disabled></label>
+  <label>Display<select id="displayMode"><option value="color" selected>Color</option><option value="bw">BW (1-bit)</option></select></label>
+  <label>BW matrix<select id="bwMatrix" disabled><option value="4" selected>4x4</option><option value="2">2x2</option></select></label>
+  <label>BW phases<select id="bwPhase" disabled><option value="shared" selected>shared</option><option value="snowInv">snow inverted</option><option value="snowOff">snow offset</option><option value="bothOff">both offset</option></select></label>
+  <label title="Matrix shift in px for offset modes; wraps modulo matrix size">BW off X<input id="bwOffX" type="number" min="0" max="7" step="1" value="2" disabled></label>
+  <label title="Matrix shift in px for offset modes; wraps modulo matrix size">BW off Y<input id="bwOffY" type="number" min="0" max="7" step="1" value="2" disabled></label>
   <button id="exportBtn">Export C array</button>
 </div>
 
@@ -93,7 +102,8 @@ const DEFAULT_SCHEME = 7;
 
 const state = { nRain: 8, rainStart: 10, rainEnd: 55, snowStart: 10, snowEnd: 35,
   scheme: DEFAULT_SCHEME, showMap: true, invertMap: false, dbzBoost: 0, rainColors: [], snowColors: [],
-  selRain: 0, selSnow: 0 };
+  selRain: 0, selSnow: 0, dither: false, ditherStrength: 1,
+  displayMode: "color", bwMatrix: 4, bwPhase: "shared", bwOffX: 2, bwOffY: 2 };
 for (let i = 0; i < 15; i++) state.rainColors.push(RAIN_POOL[i % RAIN_POOL.length]);
 for (let i = 0; i < 15; i++) state.snowColors.push(SNOW_POOL[i % SNOW_POOL.length]);
 
@@ -197,6 +207,50 @@ function bandIndex(dbz, start, end, count) {
   return b;
 }
 
+// Ordered dither between adjacent bands (and transparent <-> band 0).
+// p = (dbz - start) / w is the float band position; frac picks lo vs hi
+// via thresh = (1-s)*0.5 + s*t with t = Bayer[y%2][x%2]/4, so s=0 matches bandIndex.
+const BAYER2 = [[0, 2], [3, 1]];
+// 4x4 Bayer for 1-bit previews; same tables as maplibre/sprites/generate_bayer.py.
+const BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+// BW ramp: is this echo pixel opaque? f in [0,1] is coverage; opaque iff M < f*N*N.
+// Phase variants: "snowInv" flips snow middle polarities; "snowOff"/"bothOff"
+// shift the snow (resp. both) matrix sampling by (ox, oy) px, wrapping modulo
+// the matrix size (e.g. half a cell moves precip dots into the gaps of a map
+// background pattern that shares the matrix phase).
+function bwOpaque(f, phase, x, y, size, phaseMode, ox, oy) {
+  if (f <= 0) return false;
+  if (f >= 1) return true;
+  const M = size === 4 ? BAYER4 : BAYER2, N = size === 4 ? 4 : 2;
+  let mx = x & (N - 1), my = y & (N - 1);
+  if (phaseMode === "bothOff" || (phase === "snow" && phaseMode === "snowOff")) {
+    mx = (mx + (ox | 0)) & (N - 1); my = (my + (oy | 0)) & (N - 1);
+  }
+  const opaque = M[my][mx] < f * N * N;
+  if (phase === "snow" && phaseMode === "snowInv") return !opaque;
+  return opaque;
+}
+function bwCoverage(dbz, start, end) {
+  if (end <= start) return dbz >= end ? 1 : 0; // degenerate range: echo reads solid
+  return Math.max(0, Math.min(1, (dbz - start) / (end - start)));
+}
+function ditherBand(dbz, start, end, count, x, y, strength) {
+  if (count <= 0) return -1;
+  if (end <= start) return count - 1;
+  const w = (end - start) / count;
+  const p = (dbz - start) / w;
+  if (p < -1) return -1; // more than one band below floor: solid transparent
+  if (p >= count) return count - 1; // above ceiling: solid top
+  let lo = Math.floor(p), frac = p - lo;
+  if (p < 0) { lo = -1; frac = p + 1; } // transparent (-1) <-> band 0 zone
+  const t = BAYER2[y & 1][x & 1] / 4;
+  const thresh = (1 - strength) * 0.5 + strength * t;
+  const sel = (frac > thresh) ? lo + 1 : lo;
+  if (sel < 0) return -1;
+  if (sel >= count) return count - 1;
+  return sel;
+}
+
 function renderInto(canvas, sceneKey, mode) {
   const canvasEl = canvas;
   const ctx = canvasEl.getContext("2d");
@@ -209,17 +263,36 @@ function renderInto(canvas, sceneKey, mode) {
   const nR = state.nRain, nS = 15 - nR;
   for (let i = 0; i < W * H; i++) {
     const r = pd[i*4], a = pd[i*4+3];
+    const x = i % W, y = (i / W) | 0;
     let done = false;
-    if (mode === "pebble") {
+    if (mode === "pebble" && state.displayMode === "bw") {
       const dec = decodePixel(r, a);
       if (dec) {
         const dbz = boostedDbz(dec);
+        const f = dec.phase === "rain"
+          ? bwCoverage(dbz, state.rainStart, state.rainEnd)
+          : bwCoverage(dbz, state.snowStart, state.snowEnd);
+        if (bwOpaque(f, dec.phase, x, y, state.bwMatrix, state.bwPhase, state.bwOffX, state.bwOffY)) {
+          const v = state.invertMap ? 255 : 0; // white on dark, black on light
+          od[i*4]=v; od[i*4+1]=v; od[i*4+2]=v; od[i*4+3]=255;
+          done = true;
+        }
+      }
+    } else if (mode === "pebble") {
+      const dec = decodePixel(r, a);
+      if (dec) {
+        const dbz = boostedDbz(dec);
+        const useDither = state.dither && state.ditherStrength > 0;
         let raw = null;
         if (dec.phase === "rain") {
-          const b = bandIndex(dbz, state.rainStart, state.rainEnd, nR);
+          const b = useDither
+            ? ditherBand(dbz, state.rainStart, state.rainEnd, nR, x, y, state.ditherStrength)
+            : bandIndex(dbz, state.rainStart, state.rainEnd, nR);
           if (b >= 0) raw = state.rainColors[b];
         } else {
-          const b = bandIndex(dbz, state.snowStart, state.snowEnd, nS);
+          const b = useDither
+            ? ditherBand(dbz, state.snowStart, state.snowEnd, nS, x, y, state.ditherStrength)
+            : bandIndex(dbz, state.snowStart, state.snowEnd, nS);
           if (b >= 0) raw = state.snowColors[b];
         }
         if (raw) {
@@ -346,7 +419,23 @@ function renderAll() {
   renderInto(document.getElementById("snowPebble"), "snow", "pebble");
 }
 
+function exportBW() {
+  const L = [];
+  L.push("// BW radar (1-bit draft): shared transparent <-> opaque ramp, opaque = black (white when dark/inverted)");
+  L.push("// rain dBZ [" + state.rainStart + ", " + state.rainEnd + "] -> coverage f; snow dBZ [" + state.snowStart + ", " + state.snowEnd + "] -> coverage f");
+  L.push("// matrix: " + (state.bwMatrix === 4 ? "4x4 [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]]" : "2x2 [[0,2],[3,1]]") +
+    " (same tables as maplibre/sprites/generate_bayer.py), opaque iff M[y%N][x%N] < f*N*N");
+  L.push("// phases: " + state.bwPhase + (state.bwPhase === "snowOff"
+    ? " (snow matrix shifted by (" + state.bwOffX + "," + state.bwOffY + ")px mod N)"
+    : state.bwPhase === "bothOff" ? " (rain+snow matrix shifted by (" + state.bwOffX + "," + state.bwOffY + ")px mod N)"
+    : state.bwPhase === "snowInv" ? " (snow polarity flipped except f=0 solid clear, f=1 solid opaque)" : " (rain+snow identical)"));
+  L.push("// degenerate range (end<=start): echo reads solid opaque");
+  if (state.dbzBoost !== 0) L.push("// NOTE: preview dBZ boost " + (state.dbzBoost > 0 ? "+" : "") + state.dbzBoost + " dB active — NOT part of export");
+  document.getElementById("export").value = L.join("\n");
+}
+
 function exportC() {
+  if (state.displayMode === "bw") { exportBW(); return; }
   const nR = state.nRain, nS = 15 - state.nRain;
   const pal = ["0x000000"]; // idx 0 transparent; color irrelevant
   for (let i = 0; i < nR; i++) pal.push(state.rainColors[i].replace("#","0x"));
@@ -356,6 +445,11 @@ function exportC() {
   L.push("// rain dBZ [" + state.rainStart + ", " + state.rainEnd + "] equal-width, dBZ<start hidden, high clamped");
   L.push("// snow dBZ [" + state.snowStart + ", " + state.snowEnd + "] equal-width, dBZ<start hidden, high clamped");
   if (state.dbzBoost !== 0) L.push("// NOTE: preview dBZ boost " + (state.dbzBoost > 0 ? "+" : "") + state.dbzBoost + " dB active — NOT part of export");
+  if (state.dither)
+    L.push("// dither: on, strength " + state.ditherStrength.toFixed(2) + ", 2x2 Bayer [[0,2],[3,1]]/4, thresh=(1-s)*0.5+s*t, frac from (dbz-start)/w");
+  else
+    L.push("// dither: off (hard band edges)");
+  if (state.dither) L.push("// dither low end: p in [-1,0) mixes transparent <-> band 0; p<-1 transparent; p>=count clamps top");
   for (let i = 0; i < nR; i++) L.push("// rain band " + i + " (pal " + (1+i) + ") " + bandRangeText(state.rainStart, state.rainEnd, nR, i) + " raw " + state.rainColors[i] + " preview " + (PREVIEW_MAP[state.rainColors[i]]||""));
   for (let i = 0; i < nS; i++) L.push("// snow band " + i + " (pal " + (1+nR+i) + ") " + bandRangeText(state.snowStart, state.snowEnd, nS, i) + " raw " + state.snowColors[i] + " preview " + (PREVIEW_MAP[state.snowColors[i]]||""));
   L.push("static const uint32_t RADAR_PALETTE_RAW[16] = {");
@@ -384,7 +478,59 @@ function bindControls() {
     document.getElementById("dbzBoostVal").textContent = (state.dbzBoost > 0 ? "+" : "") + state.dbzBoost;
     renderAll();
   });
+  document.getElementById("dither").addEventListener("change", e => {
+    state.dither = e.target.checked;
+    refreshControlStates();
+    renderAll();
+  });
+  document.getElementById("ditherStrength").addEventListener("input", e => {
+    state.ditherStrength = Math.max(0, Math.min(1, parseFloat(e.target.value) || 0));
+    document.getElementById("ditherStrengthVal").textContent = state.ditherStrength.toFixed(2);
+    renderAll();
+  });
+  document.getElementById("displayMode").addEventListener("change", e => {
+    state.displayMode = e.target.value === "bw" ? "bw" : "color";
+    refreshControlStates();
+    renderAll();
+  });
+  document.getElementById("bwMatrix").addEventListener("change", e => {
+    state.bwMatrix = parseInt(e.target.value, 10) === 2 ? 2 : 4;
+    renderAll();
+  });
+  document.getElementById("bwPhase").addEventListener("change", e => {
+    const v = e.target.value;
+    state.bwPhase = (v === "snowInv" || v === "snowOff" || v === "bothOff") ? v : "shared";
+    refreshControlStates();
+    renderAll();
+  });
+  const bwOff = (id, fn) => document.getElementById(id).addEventListener("input", e => {
+    let v = parseInt(e.target.value, 10);
+    if (isNaN(v) || v < 0) v = 0;
+    fn(v);
+    renderAll();
+  });
+  bwOff("bwOffX", v => { state.bwOffX = v; });
+  bwOff("bwOffY", v => { state.bwOffY = v; });
   document.getElementById("exportBtn").addEventListener("click", exportC);
+  refreshControlStates();
+}
+
+// Color-only inputs do nothing in BW mode (shared ramp); BW inputs vice versa.
+function refreshControlStates() {
+  const isBW = state.displayMode === "bw";
+  document.getElementById("nRain").disabled = isBW;
+  document.getElementById("dither").disabled = isBW;
+  document.getElementById("ditherStrength").disabled = isBW || !state.dither;
+  document.getElementById("bwMatrix").disabled = !isBW;
+  document.getElementById("bwPhase").disabled = !isBW;
+  const offEnabled = isBW && (state.bwPhase === "snowOff" || state.bwPhase === "bothOff");
+  document.getElementById("bwOffX").disabled = !offEnabled;
+  document.getElementById("bwOffY").disabled = !offEnabled;
+  for (const sel of ["#strip", "#selInfo", ".pickers"])
+    for (const el of document.querySelectorAll(sel)) {
+      el.style.opacity = isBW ? "0.35" : "";
+      el.style.pointerEvents = isBW ? "none" : "";
+    }
 }
 
 async function main() {
