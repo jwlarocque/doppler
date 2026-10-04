@@ -7,9 +7,15 @@ var COLOR_PALETTES = {
   nexrad: {
     rain: { start: 10, end: 70, bands: 12 },
     snow: { start: 5, end: 35, bands: 3 }
+  },
+  darksky: {
+    rain: { start: 15, end: 55, bands: 9 },
+    snow: { start: 10, end: 35, bands: 6 },
+    dither: true,
+    ditherStrength: 1.0
   }
 };
-var ACTIVE_PALETTE = 'nexrad';
+var ACTIVE_PALETTE = 'darksky';
 
 var BW_COVERAGE = {
   rain: { start: 10, end: 50 },
@@ -60,25 +66,52 @@ function bwOpaque(f, x, y, matrix) {
   return m[y % n][x % n] < f * n * n;
 }
 
+// Bayer dither between adjacent color bands (and transparent)
+function ditherBand(dbz, start, end, count, x, y, strength) {
+  if (count <= 0) return -1;
+  if (end <= start) return count - 1;
+  var w = (end - start) / count;
+  var p = (dbz - start) / w;
+  if (p < -1) return -1;
+  if (p >= count) return count - 1;
+  var lo = Math.floor(p);
+  var frac = p - lo;
+  if (p < 0) { lo = -1; frac = p + 1; }
+  var t = BAYER_2X2[y & 1][x & 1] / 4;
+  var thresh = (1 - strength) * 0.5 + strength * t;
+  var sel = (frac > thresh) ? lo + 1 : lo;
+  if (sel < 0) return -1;
+  if (sel >= count) return count - 1;
+  return sel;
+}
+
 // Convert RGBA (screenW*screenH*4) to uint4 palette indices
 // and phase/dbz for dithering on bw
 function classify(rgba, screenW, screenH, palette) {
   var pal = palette || COLOR_PALETTES[ACTIVE_PALETTE];
   var rainBands = pal.rain.bands;
+  var useDither = !!pal.dither && pal.ditherStrength > 0;
+  var strength = pal.ditherStrength || 0;
   var indices = new Uint8Array(screenW * screenH);
   var phases = new Uint8Array(screenW * screenH); // 0 none, 1 rain, 2 snow
   var dbzs = new Int16Array(screenW * screenH);
   for (var i = 0; i < screenW * screenH; i++) {
     var dec = decodePixel(rgba[i * 4], rgba[i * 4 + 3]);
     if (!dec) continue;
+    var x = i % screenW;
+    var y = (i / screenW) | 0;
     var b;
     if (dec.phase === 'rain') {
-      b = bandIndex(dec.dbz, pal.rain.start, pal.rain.end, rainBands);
+      b = useDither
+        ? ditherBand(dec.dbz, pal.rain.start, pal.rain.end, rainBands, x, y, strength)
+        : bandIndex(dec.dbz, pal.rain.start, pal.rain.end, rainBands);
       if (b < 0) continue;
       indices[i] = 1 + b;
       phases[i] = 1;
     } else {
-      b = bandIndex(dec.dbz, pal.snow.start, pal.snow.end, pal.snow.bands);
+      b = useDither
+        ? ditherBand(dec.dbz, pal.snow.start, pal.snow.end, pal.snow.bands, x, y, strength)
+        : bandIndex(dec.dbz, pal.snow.start, pal.snow.end, pal.snow.bands);
       if (b < 0) continue;
       indices[i] = 1 + rainBands + b;
       phases[i] = 2;
@@ -169,6 +202,7 @@ module.exports = {
   DITHER_MATRIX: DITHER_MATRIX,
   decodePixel: decodePixel,
   bandIndex: bandIndex,
+  ditherBand: ditherBand,
   bwCoverage: bwCoverage,
   bwOpaque: bwOpaque,
   classify: classify,

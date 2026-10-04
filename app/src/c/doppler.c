@@ -8,12 +8,18 @@ static Window *s_window;
 static Layer *s_map_layer;
 
 #ifdef PBL_COLOR
-// temporary hardcode of NOAA NEXRAD palette (0 is transparent)
+// NOAA NEXRAD palette (0 is transparent)
 static const uint8_t NEXRAD_GCOLOR[16] = {
   0x00,
   0xCB, 0xC3, 0xCC, 0xC8, 0xC4, 0xFC,
   0xE8, 0xF8, 0xF0, 0xE0, 0xE0, 0xF3,
   0xEF, 0xDB, 0xC7
+};
+// Dark Sky palette
+static const uint8_t DARK_SKY_GCOLOR[16] = {
+  0x00,
+  0xC1, 0xC2, 0xD2, 0xE2, 0xF0, 0xF4, 0xF8, 0xFC, 0xFE,
+  0xDF, 0xDF, 0xDB, 0xCB, 0xD7, 0xC7
 };
 #endif
 
@@ -50,7 +56,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
         uint8_t packed = radar[y * RADAR_STRIDE + (x >> 1)];
         uint8_t idx = (x & 1) ? (packed & 15) : (packed >> 4);
         if (idx) {
-          info.data[x] = NEXRAD_GCOLOR[idx];
+          info.data[x] = DARK_SKY_GCOLOR[idx];
         }
       }
     }
