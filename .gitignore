@@ -4,4 +4,5 @@ magick_tests
 *.pyc
 app/node_modules
 app/build
+app/src/pkjs/config.local.js
 .vscode
