@@ -2,6 +2,7 @@
 
 #include "comm.h"
 #include "map.h"
+#include "radar.h"
 
 #define OUTBOX_SIZE 128
 
@@ -27,6 +28,23 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *done_tuple = dict_find(iter, MESSAGE_KEY_MapDone);
   if (done_tuple) {
     map_complete(done_tuple->value->int32);
+    return;
+  }
+  Tuple *radar_length_tuple = dict_find(iter, MESSAGE_KEY_RadarLength);
+  if (radar_length_tuple) {
+    radar_begin(radar_length_tuple->value->int32);
+    return;
+  }
+  Tuple *radar_chunk_tuple = dict_find(iter, MESSAGE_KEY_RadarChunk);
+  if (radar_chunk_tuple) {
+    Tuple *index_tuple = dict_find(iter, MESSAGE_KEY_RadarIndex);
+    int32_t index = index_tuple ? index_tuple->value->int32 : 0;
+    radar_chunk(radar_chunk_tuple->value->data, radar_chunk_tuple->length, index);
+    return;
+  }
+  Tuple *radar_done_tuple = dict_find(iter, MESSAGE_KEY_RadarDone);
+  if (radar_done_tuple) {
+    radar_complete(radar_done_tuple->value->int32);
   }
 }
 

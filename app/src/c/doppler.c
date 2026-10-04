@@ -2,10 +2,20 @@
 
 #include "comm.h"
 #include "map.h"
+#include "radar.h"
 
 static Window *s_window;
 static Layer *s_map_layer;
 
+#ifdef PBL_COLOR
+// temporary hardcode of NOAA NEXRAD palette (0 is transparent)
+static const uint8_t NEXRAD_GCOLOR[16] = {
+  0x00,
+  0xCB, 0xC3, 0xCC, 0xC8, 0xC4, 0xFC,
+  0xE8, 0xF8, 0xF0, 0xE0, 0xE0, 0xF3,
+  0xEF, 0xDB, 0xC7
+};
+#endif
 
 static void prv_map_update(Layer *layer, GContext *ctx) {
   if (!map_is_ready()) {
@@ -16,6 +26,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     return;
   }
   const uint8_t *raw = map_raw();
+  const uint8_t *radar = radar_is_ready() ? radar_raw() : NULL;
   GRect bounds = layer_get_bounds(layer);
   int16_t height = bounds.size.h;
   if (height > MAP_HEIGHT) {
@@ -34,6 +45,15 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
       uint8_t gray = (packed >> (6 - 2 * (x & 3))) & 3;
       info.data[x] = shades[gray];
     }
+    if (radar) {
+      for (int16_t x = info.min_x; x <= info.max_x; x++) {
+        uint8_t packed = radar[y * RADAR_STRIDE + (x >> 1)];
+        uint8_t idx = (x & 1) ? (packed & 15) : (packed >> 4);
+        if (idx) {
+          info.data[x] = NEXRAD_GCOLOR[idx];
+        }
+      }
+    }
 #else
     // bw watches are rectangular, and our 1bpp data is already in the
     // framebuffer format, so we can just copy whole rows
@@ -41,6 +61,13 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     int16_t last = info.max_x >> 3;
     memcpy(&info.data[first], &raw[y * MAP_STRIDE + first],
            (size_t)(last - first + 1));
+    if (radar) {
+      // radar is black-on-transparent
+      for (int16_t bx = first; bx <= last; bx++) {
+        uint8_t bits = radar[y * RADAR_STRIDE + bx];
+        info.data[bx] &= ~bits;
+      }
+    }
 #endif
   }
   graphics_release_frame_buffer(ctx, framebuffer);
@@ -54,10 +81,12 @@ static void prv_window_load(Window *window) {
   layer_set_update_proc(s_map_layer, prv_map_update);
   layer_add_child(window_layer, s_map_layer);
   map_set_layer(s_map_layer);
+  radar_set_layer(s_map_layer);
 }
 
 static void prv_window_unload(Window *window) {
   map_set_layer(NULL);
+  radar_set_layer(NULL);
   layer_destroy(s_map_layer);
 }
 

@@ -33,7 +33,11 @@
       "MapLength",
       "MapChunk",
       "MapIndex",
-      "MapDone"
+      "MapDone",
+      "RadarLength",
+      "RadarChunk",
+      "RadarIndex",
+      "RadarDone"
     ],
     "resources": {
       "media": []
