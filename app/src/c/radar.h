@@ -10,6 +10,10 @@
 #ifdef PBL_COLOR
 // 4bpp packed rows, high first
 #define RADAR_STRIDE ((MAP_WIDTH + 1) / 2)
+// direct-to-framebuffer decompressor assumes rows are RADAR_STRIDE * 2
+#if (MAP_WIDTH % 2) != 0
+#error "radar expand path needs an even display width"
+#endif
 #else
 // 1bpp
 #define RADAR_STRIDE ((MAP_WIDTH + 7) / 8)
@@ -25,5 +29,9 @@ void radar_chunk(const uint8_t *data, uint16_t length, int32_t index);
 void radar_complete(int32_t uncompressed_length);
 
 void radar_set_layer(Layer *layer);
+// radar data and lengths are valid
 bool radar_is_ready(void);
-const uint8_t *radar_raw(void);
+const uint8_t *radar_compressed(void);
+int32_t radar_compressed_length(void);
+// decoded image; temporary hack for chalk's circular framebuffer
+const uint8_t *radar_decoded(void);

@@ -50,20 +50,6 @@ void radar_complete(int32_t uncompressed_length) {
             (int)s_received, (int)s_total, (int)uncompressed_length);
     return;
   }
-  s_raw = malloc(RADAR_RAW_BYTES);
-  if (!s_raw) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar raw malloc failed");
-    return;
-  }
-  int decoded = lz4_decompress(s_data, s_total, s_raw, RADAR_RAW_BYTES);
-  if (decoded != RADAR_RAW_BYTES) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar decode failed, got %d", decoded);
-    free(s_raw);
-    s_raw = NULL;
-    return;
-  }
-  free(s_data);
-  s_data = NULL;
   s_ready = true;
   APP_LOG(APP_LOG_LEVEL_INFO, "radar ready, heap free %d", (int)heap_bytes_free());
   if (s_layer) {
@@ -79,6 +65,31 @@ bool radar_is_ready(void) {
   return s_ready;
 }
 
-const uint8_t *radar_raw(void) {
+const uint8_t *radar_compressed(void) {
+  return s_data;
+}
+
+int32_t radar_compressed_length(void) {
+  return s_total;
+}
+
+// temporary buffer instead of decompressing direct to chalk's circular framebuffer
+const uint8_t *radar_decoded(void) {
+  if (!s_ready) {
+    return NULL;
+  }
+  if (!s_raw) {
+    s_raw = malloc(RADAR_RAW_BYTES);
+    if (!s_raw) {
+      return NULL;
+    }
+    int decoded = lz4_decompress(s_data, s_total, s_raw, RADAR_RAW_BYTES);
+    if (decoded != RADAR_RAW_BYTES) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "radar decode failed, got %d", decoded);
+      free(s_raw);
+      s_raw = NULL;
+      return NULL;
+    }
+  }
   return s_raw;
 }

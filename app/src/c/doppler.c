@@ -1,6 +1,7 @@
 #include <pebble.h>
 
 #include "comm.h"
+#include "lz4.h"
 #include "map.h"
 #include "radar.h"
 
@@ -9,7 +10,7 @@ static Layer *s_map_layer;
 
 #ifdef PBL_COLOR
 // NOAA NEXRAD palette (0 is transparent)
-static const uint8_t NEXRAD_GCOLOR[16] = {
+static const uint8_t NEXRAD_GCOLOR[16] __attribute__((unused)) = {
   0x00,
   0xCB, 0xC3, 0xCC, 0xC8, 0xC4, 0xFC,
   0xE8, 0xF8, 0xF0, 0xE0, 0xE0, 0xF3,
@@ -32,50 +33,95 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     return;
   }
   const uint8_t *raw = map_raw();
-  const uint8_t *radar = radar_is_ready() ? radar_raw() : NULL;
+  const uint8_t *radar = radar_is_ready() ? radar_compressed() : NULL;
   GRect bounds = layer_get_bounds(layer);
   int16_t height = bounds.size.h;
   if (height > MAP_HEIGHT) {
     height = MAP_HEIGHT;
   }
 #ifdef PBL_COLOR
+  // decompress radar first so we can copy matches directly from the
+  // framebuffer (note: compressed data is 4bpp, so double the offset and
+  // length of matches)
+  // then copy map "underneath", treating 0x00 as transparent
+  // for circular framebuffers, radar data is decompressed to a buffer instead
+  // (for now)
+  bool radar_ok = false;
+  bool circular = (gbitmap_get_format(framebuffer) == GBitmapFormat8BitCircular);
+  const uint8_t *circular_radar = NULL;
+  if (radar && circular) {
+    circular_radar = radar_decoded();
+  }
+  if (radar && !circular) {
+    GBitmapDataRowInfo row0 = gbitmap_get_data_row_info(framebuffer, 0);
+    GBitmapDataRowInfo row1 = gbitmap_get_data_row_info(framebuffer, 1);
+    int pitch = (int)(row1.data - row0.data);
+    if (pitch >= MAP_WIDTH) {
+      int got = lz4_decompress_expand_to_rows(
+          radar, radar_compressed_length(), row0.data, pitch, RADAR_STRIDE,
+          MAP_HEIGHT, DARK_SKY_GCOLOR);
+      radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
+    }
+    if (!radar_ok) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "radar expand failed");
+    }
+  }
   const uint8_t shades[4] = {
     GColorBlack.argb, GColorDarkGray.argb, GColorLightGray.argb, GColorWhite.argb
   };
-#endif
   for (int16_t y = 0; y < height; y++) {
     GBitmapDataRowInfo info = gbitmap_get_data_row_info(framebuffer, (uint16_t)y);
-#ifdef PBL_COLOR
     for (int16_t x = info.min_x; x <= info.max_x; x++) {
+      if (radar_ok && info.data[x]) {
+        continue;
+      }
+      if (circular_radar) {
+        uint8_t packed = circular_radar[y * RADAR_STRIDE + (x >> 1)];
+        uint8_t idx = (x & 1) ? (packed & 15) : (packed >> 4);
+        if (idx) {
+          info.data[x] = DARK_SKY_GCOLOR[idx];
+          continue;
+        }
+      }
       uint8_t packed = raw[y * MAP_STRIDE + (x >> 2)];
       uint8_t gray = (packed >> (6 - 2 * (x & 3))) & 3;
       info.data[x] = shades[gray];
     }
-    if (radar) {
-      for (int16_t x = info.min_x; x <= info.max_x; x++) {
-        uint8_t packed = radar[y * RADAR_STRIDE + (x >> 1)];
-        uint8_t idx = (x & 1) ? (packed & 15) : (packed >> 4);
-        if (idx) {
-          info.data[x] = DARK_SKY_GCOLOR[idx];
-        }
-      }
-    }
+  }
 #else
-    // bw watches are rectangular, and our 1bpp data is already in the
-    // framebuffer format, so we can just copy whole rows
+  bool radar_ok = false;
+  if (radar) {
+    GBitmapDataRowInfo row0 = gbitmap_get_data_row_info(framebuffer, 0);
+    GBitmapDataRowInfo row1 = gbitmap_get_data_row_info(framebuffer, 1);
+    int pitch = (int)(row1.data - row0.data);
+    if (pitch >= RADAR_STRIDE) {
+      int got = lz4_decompress_to_rows(radar, radar_compressed_length(),
+                                       row0.data, pitch, RADAR_STRIDE,
+                                       MAP_HEIGHT);
+      radar_ok = (got == RADAR_RAW_BYTES);
+    }
+    if (!radar_ok) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "radar decode failed");
+    }
+  }
+  // bw watches are rectangular, and our 1bpp data is already in the
+  // framebuffer format, so we can just copy whole rows
+  for (int16_t y = 0; y < height; y++) {
+    GBitmapDataRowInfo info = gbitmap_get_data_row_info(framebuffer, (uint16_t)y);
     int16_t first = info.min_x >> 3;
     int16_t last = info.max_x >> 3;
-    memcpy(&info.data[first], &raw[y * MAP_STRIDE + first],
-           (size_t)(last - first + 1));
-    if (radar) {
+    if (radar_ok) {
       // radar is black-on-transparent
       for (int16_t bx = first; bx <= last; bx++) {
-        uint8_t bits = radar[y * RADAR_STRIDE + bx];
-        info.data[bx] &= ~bits;
+        uint8_t bits = info.data[bx];
+        info.data[bx] = raw[y * MAP_STRIDE + bx] & ~bits;
       }
+    } else {
+      memcpy(&info.data[first], &raw[y * MAP_STRIDE + first],
+             (size_t)(last - first + 1));
     }
-#endif
   }
+#endif
   graphics_release_frame_buffer(ctx, framebuffer);
 }
 

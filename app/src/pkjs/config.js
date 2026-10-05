@@ -1,5 +1,5 @@
 var settings = {
-  zoom: 3,
+  zoom: 6,
   testLat: 16.7735,
   testLon: -3.0074,
   useTestFix: false,
