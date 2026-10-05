@@ -44,13 +44,18 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   // framebuffer (note: compressed data is 4bpp, so double the offset and
   // length of matches)
   // then copy map "underneath", treating 0x00 as transparent
-  // for circular framebuffers, radar data is decompressed to a buffer instead
-  // (for now)
+  // chalk's circular framebuffer needs a special variant that skips the
+  // corners
   bool radar_ok = false;
   bool circular = (gbitmap_get_format(framebuffer) == GBitmapFormat8BitCircular);
-  const uint8_t *circular_radar = NULL;
   if (radar && circular) {
-    circular_radar = radar_decoded();
+    int got = lz4_decompress_expand_to_circular(
+        radar, radar_compressed_length(), framebuffer, RADAR_STRIDE,
+        MAP_HEIGHT, DARK_SKY_GCOLOR);
+    radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
+    if (!radar_ok) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "radar circular expand failed");
+    }
   }
   if (radar && !circular) {
     GBitmapDataRowInfo row0 = gbitmap_get_data_row_info(framebuffer, 0);
@@ -74,14 +79,6 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     for (int16_t x = info.min_x; x <= info.max_x; x++) {
       if (radar_ok && info.data[x]) {
         continue;
-      }
-      if (circular_radar) {
-        uint8_t packed = circular_radar[y * RADAR_STRIDE + (x >> 1)];
-        uint8_t idx = (x & 1) ? (packed & 15) : (packed >> 4);
-        if (idx) {
-          info.data[x] = DARK_SKY_GCOLOR[idx];
-          continue;
-        }
       }
       uint8_t packed = raw[y * MAP_STRIDE + (x >> 2)];
       uint8_t gray = (packed >> (6 - 2 * (x & 3))) & 3;

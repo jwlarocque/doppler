@@ -1,12 +1,10 @@
 #include <pebble.h>
 
-#include "lz4.h"
 #include "radar.h"
 
 static uint8_t *s_data;
 static int32_t s_total;
 static int32_t s_received;
-static uint8_t *s_raw;
 static bool s_ready;
 static Layer *s_layer;
 
@@ -15,8 +13,6 @@ void radar_begin(int32_t total) {
   s_data = NULL;
   s_total = 0;
   s_received = 0;
-  free(s_raw);
-  s_raw = NULL;
   s_ready = false;
   if (total <= 0 || total > RADAR_COMPRESSED_MAX) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "radar rejected, length %d", (int)total);
@@ -71,25 +67,4 @@ const uint8_t *radar_compressed(void) {
 
 int32_t radar_compressed_length(void) {
   return s_total;
-}
-
-// temporary buffer instead of decompressing direct to chalk's circular framebuffer
-const uint8_t *radar_decoded(void) {
-  if (!s_ready) {
-    return NULL;
-  }
-  if (!s_raw) {
-    s_raw = malloc(RADAR_RAW_BYTES);
-    if (!s_raw) {
-      return NULL;
-    }
-    int decoded = lz4_decompress(s_data, s_total, s_raw, RADAR_RAW_BYTES);
-    if (decoded != RADAR_RAW_BYTES) {
-      APP_LOG(APP_LOG_LEVEL_ERROR, "radar decode failed, got %d", decoded);
-      free(s_raw);
-      s_raw = NULL;
-      return NULL;
-    }
-  }
-  return s_raw;
 }

@@ -22,3 +22,12 @@ int lz4_decompress_to_rows(const uint8_t *src, int src_length, uint8_t *dst_base
 int lz4_decompress_expand_to_rows(const uint8_t *src, int src_length,
                                   uint8_t *dst_base, int dst_pitch, int stride,
                                   int rows, const uint8_t *palette);
+
+// same, but for chalk's packed circular framebuffer
+// pixels outside a row's [min_x, max_x] are skipped on write; lz4 matches
+// that read from those positions get palette[0] (transparent), which is
+// correct because the corners are zeroed before compression
+// returns 2 * stride * rows on success, or negative on corrupt input
+int lz4_decompress_expand_to_circular(const uint8_t *src, int src_length,
+                                      GBitmap *framebuffer, int stride,
+                                      int rows, const uint8_t *palette);

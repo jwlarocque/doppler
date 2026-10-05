@@ -33,5 +33,3 @@ void radar_set_layer(Layer *layer);
 bool radar_is_ready(void);
 const uint8_t *radar_compressed(void);
 int32_t radar_compressed_length(void);
-// decoded image; temporary hack for chalk's circular framebuffer
-const uint8_t *radar_decoded(void);
