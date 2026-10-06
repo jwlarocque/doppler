@@ -44,7 +44,24 @@
       "RadarFull"
     ],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "file": "icon.png",
+          "name": "APP_ICON",
+          "type": "bitmap",
+          "memoryFormat": "1Bit",
+          "menuIcon": true,
+          "spaceOptimization": "memory",
+          "targetPlatforms": ["aplite", "diorite", "flint"]
+        },
+        {
+          "file": "icon.png",
+          "name": "APP_ICON",
+          "type": "bitmap",
+          "spaceOptimization": "memory",
+          "targetPlatforms": ["basalt", "chalk", "emery", "gabbro"]
+        }
+      ]
     }
   }
 }
