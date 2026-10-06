@@ -28,13 +28,17 @@ function currentFix(callback) {
 }
 
 function compressAndSend(kind, res, fix, screen, detail) {
-  var packet = lz4.compress(res.packed);
+  // map is sent uncompressed for now and stored in a dedicated buffer
+  // radar is compressed and packed into the arena
+  var compressed = kind !== 'map';
+  var packet = compressed ? lz4.compress(res.packed) : res.packed;
   var ratio = (100 * packet.length / res.packed.length).toFixed(1);
   console.log(kind + ' ' + res.width + 'x' + res.height +
     ' tiles=' + res.tiles +
     (detail ? ' ' + detail : '') +
     ' raw=' + res.packed.length +
-    ' tx=' + packet.length + ' (lz4-block, ' + ratio + '%)' +
+    ' tx=' + packet.length +
+    (compressed ? ' (lz4-block, ' + ratio + '%)' : ' (uncompressed)') +
     (fix.test ? ' (test fix)' : ''));
   var sender = kind === 'radar' ? send.sendRadar : send.sendMap;
   sender(packet, res.packed.length,

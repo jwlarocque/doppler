@@ -15,28 +15,7 @@
 // decompressed image size in bytes
 #define MAP_RAW_BYTES (MAP_STRIDE * PBL_DISPLAY_HEIGHT)
 
-// these maximums come from sampling about 50M viewports in high-entropy areas
-// of the map, plus 5%
-// if zoom levels beyond 7 or new map styles are added, these may need to be
-// re-evaluated
-#if PBL_DISPLAY_WIDTH == 144
-#ifdef PBL_COLOR
-#define MAP_COMPRESSED_MAX 5963
-#else
-#define MAP_COMPRESSED_MAX 3051
-#endif
-#elif PBL_DISPLAY_WIDTH == 180
-#define MAP_COMPRESSED_MAX 6711
-#elif PBL_DISPLAY_WIDTH == 200
-#define MAP_COMPRESSED_MAX 10240
-#elif PBL_DISPLAY_WIDTH == 260
-#define MAP_COMPRESSED_MAX 12533
-#else
-// lz4 worst case
-#define MAP_COMPRESSED_MAX (MAP_RAW_BYTES + MAP_RAW_BYTES / 255 + 16)
-#endif
-
-// Compressed map packet store. Holds one LZ4 raw block until decompressed.
+// uncompressed map image store
 void map_begin(int32_t total);
 void map_chunk(const uint8_t *data, uint16_t length, int32_t index);
 void map_complete(int32_t uncompressed_length);
