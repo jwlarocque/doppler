@@ -27,20 +27,20 @@
 // static memory is limited to 64K, so emery and gabbro use malloc instead
 // sizes must match tiles.js
 #if defined(PBL_PLATFORM_APLITE)
-#define RADAR_ARENA_BYTES 7168
+#define RADAR_ARENA_BYTES 10219
 #elif defined(PBL_PLATFORM_BASALT)
-#define RADAR_ARENA_BYTES 37888
+#define RADAR_ARENA_BYTES 43851
 #elif defined(PBL_PLATFORM_CHALK)
-#define RADAR_ARENA_BYTES 35840
+#define RADAR_ARENA_BYTES 42551
 #elif defined(PBL_PLATFORM_DIORITE)
-#define RADAR_ARENA_BYTES 46080
+#define RADAR_ARENA_BYTES 49131
 #elif defined(PBL_PLATFORM_FLINT)
-#define RADAR_ARENA_BYTES 46080
+#define RADAR_ARENA_BYTES 49131
 #elif defined(PBL_PLATFORM_EMERY)
-#define RADAR_ARENA_BYTES 92160
+#define RADAR_ARENA_BYTES 102400
 #define RADAR_ARENA_MALLOC 1
 #elif defined(PBL_PLATFORM_GABBRO)
-#define RADAR_ARENA_BYTES 86016
+#define RADAR_ARENA_BYTES 98549
 #define RADAR_ARENA_MALLOC 1
 #else
 #define RADAR_ARENA_BYTES 7168

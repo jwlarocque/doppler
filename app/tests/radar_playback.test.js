@@ -91,10 +91,10 @@ function frames(prefix, times) {
 
 (function arenaMirror() {
   // tiles.js must mirror c/radar.h; spot-check keys and 2-frame minimum.
-  var expect = { aplite: 7168, basalt: 37888, chalk: 35840, diorite: 46080, flint: 46080, emery: 92160, gabbro: 86016 };
+  var expect = { aplite: 10219, basalt: 43851, chalk: 42551, diorite: 49131, flint: 49131, emery: 102400, gabbro: 98549 };
   assert.deepStrictEqual(tiles.RADAR_ARENA_BYTES, expect);
-  assert.strictEqual(tiles.radarArenaFor('flint'), 46080);
-  assert.strictEqual(tiles.radarArenaFor('unknown'), 46080);
+  assert.strictEqual(tiles.radarArenaFor('flint'), 49131);
+  assert.strictEqual(tiles.radarArenaFor('unknown'), 49131);
 })();
 
 (function queueSession() {
