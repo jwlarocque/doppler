@@ -7,6 +7,19 @@
 
 static Window *s_window;
 static Layer *s_map_layer;
+static AppTimer *s_play_timer;
+static int s_play_index;
+
+#define RADAR_PLAY_MS 500
+
+static void prv_play_tick(void *context) {
+  s_play_index++;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "radar tick %d", s_play_index);
+  s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
+  if (s_map_layer) {
+    layer_mark_dirty(s_map_layer);
+  }
+}
 
 #ifdef PBL_COLOR
 // NOAA NEXRAD palette (0 is transparent)
@@ -33,7 +46,31 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     return;
   }
   const uint8_t *raw = map_raw();
-  const uint8_t *radar = radar_is_ready() ? radar_compressed() : NULL;
+  int play_count = radar_count();
+  const uint8_t *radar = NULL;
+  int32_t radar_len = 0;
+  if (play_count >= 2) {
+    int slot = radar_base() + (s_play_index % play_count);
+    radar = radar_frame_at(slot, &radar_len, NULL);
+    if (!radar) {
+      radar = radar_compressed();
+      radar_len = radar_compressed_length();
+    }
+    if (!s_play_timer) {
+      APP_LOG(APP_LOG_LEVEL_INFO, "radar playback start, frames %d", play_count);
+      s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
+    }
+  } else {
+    if (s_play_timer) {
+      app_timer_cancel(s_play_timer);
+      s_play_timer = NULL;
+      s_play_index = 0;
+    }
+    if (radar_is_ready()) {
+      radar = radar_compressed();
+      radar_len = radar_compressed_length();
+    }
+  }
   GRect bounds = layer_get_bounds(layer);
   int16_t height = bounds.size.h;
   if (height > MAP_HEIGHT) {
@@ -50,7 +87,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   bool circular = (gbitmap_get_format(framebuffer) == GBitmapFormat8BitCircular);
   if (radar && circular) {
     int got = lz4_decompress_expand_to_circular(
-        radar, radar_compressed_length(), framebuffer, RADAR_STRIDE,
+        radar, radar_len, framebuffer, RADAR_STRIDE,
         MAP_HEIGHT, DARK_SKY_GCOLOR);
     radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
     if (!radar_ok) {
@@ -63,7 +100,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     int pitch = (int)(row1.data - row0.data);
     if (pitch >= MAP_WIDTH) {
       int got = lz4_decompress_expand_to_rows(
-          radar, radar_compressed_length(), row0.data, pitch, RADAR_STRIDE,
+          radar, radar_len, row0.data, pitch, RADAR_STRIDE,
           MAP_HEIGHT, DARK_SKY_GCOLOR);
       radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
     }
@@ -92,7 +129,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     GBitmapDataRowInfo row1 = gbitmap_get_data_row_info(framebuffer, 1);
     int pitch = (int)(row1.data - row0.data);
     if (pitch >= RADAR_STRIDE) {
-      int got = lz4_decompress_to_rows(radar, radar_compressed_length(),
+      int got = lz4_decompress_to_rows(radar, radar_len,
                                        row0.data, pitch, RADAR_STRIDE,
                                        MAP_HEIGHT);
       radar_ok = (got == RADAR_RAW_BYTES);
@@ -134,12 +171,18 @@ static void prv_window_load(Window *window) {
 }
 
 static void prv_window_unload(Window *window) {
+  if (s_play_timer) {
+    app_timer_cancel(s_play_timer);
+    s_play_timer = NULL;
+  }
+  s_play_index = 0;
   map_set_layer(NULL);
   radar_set_layer(NULL);
   layer_destroy(s_map_layer);
 }
 
 static void prv_init(void) {
+  radar_init();
   comm_init();
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers) {

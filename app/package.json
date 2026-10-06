@@ -37,7 +37,11 @@
       "RadarLength",
       "RadarChunk",
       "RadarIndex",
-      "RadarDone"
+      "RadarDone",
+      "RadarFrame",
+      "RadarLayout",
+      "RadarAck",
+      "RadarFull"
     ],
     "resources": {
       "media": []

@@ -1,3 +1,7 @@
 #pragma once
 
+#include <pebble.h>
+
 void comm_init(void);
+void comm_send_ack(int32_t slot);
+void comm_send_full(int32_t slot);

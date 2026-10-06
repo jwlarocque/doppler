@@ -148,9 +148,12 @@ function fetchMeta(hostOverride, callback) {
       callback(new Error('no past radar frames in metadata'));
       return;
     }
+    var nowcast = (meta && meta.radar && meta.radar.nowcast) || [];
     var frame = past[past.length - 1];
     callback(null, {
       host: meta.host || host,
+      past: past,
+      nowcast: nowcast,
       time: frame.time,
       path: frame.path
     });
@@ -193,6 +196,130 @@ function buildRadarImage(fetcher, viewport, screen, frame, callback) {
   });
 }
 
+var PAST_MAX = 12;
+var NOWCAST_MAX = 6;
+var MAX_FRAMES = 18;
+
+// fetch priority order, middle-out starting with live:
+// live, past[-2], nowcast[0], past[-3], nowcast[1], ...
+function priorityOrder(past, nowcast) {
+  past = past || [];
+  nowcast = nowcast || [];
+  var cappedPast = past.slice(Math.max(0, past.length - PAST_MAX));
+  var cappedNow = nowcast.slice(0, NOWCAST_MAX);
+  if (!cappedPast.length) return [];
+  var out = [];
+  var live = cappedPast[cappedPast.length - 1];
+  out.push({ kind: 'live', time: live.time, path: live.path });
+  var pastRest = [];
+  for (var i = cappedPast.length - 2; i >= 0; i--) {
+    pastRest.push({ kind: 'past', time: cappedPast[i].time, path: cappedPast[i].path });
+  }
+  var j = 0;
+  var k = 0;
+  while (j < pastRest.length || k < cappedNow.length) {
+    if (j < pastRest.length) out.push(pastRest[j++]);
+    if (k < cappedNow.length) {
+      out.push({ kind: 'nowcast', time: cappedNow[k].time, path: cappedNow[k].path });
+      k++;
+    }
+  }
+  return out;
+}
+
+function sizeOfEntry(sizes, entry) {
+  if (!sizes) return 0;
+  if (typeof sizes === 'function') return sizes(entry);
+  return sizes[entry.time];
+}
+
+// pack in priority order; sum sizes until the arena size is exceeded
+function orderFrames(past, nowcast, sizes, arenaBytes) {
+  var ordered = priorityOrder(past, nowcast);
+  var kept = [];
+  var total = 0;
+  var stop = 'exhausted';
+  for (var i = 0; i < ordered.length; i++) {
+    var s = sizeOfEntry(sizes, ordered[i]);
+    if (typeof s !== 'number') break;
+    if (total + s > arenaBytes) {
+      stop = 'greedy';
+      break;
+    }
+    kept.push(ordered[i]);
+    total += s;
+  }
+  return { frames: kept, totalBytes: total, stop: stop };
+}
+
+// returns chronological slot + offset for a frame
+function slotFor(sortedKept, sizeOf, i) {
+  var offset = 0;
+  for (var j = 0; j < i; j++) offset += sizeOf(sortedKept[j]);
+  return {
+    slot: i,
+    offset: offset,
+    len: sizeOf(sortedKept[i]),
+    time: sortedKept[i].time
+  };
+}
+
+// generate chronological order with offsets
+function layoutSlots(keptPriority, sizes) {
+  var sizeFn = (typeof sizes === 'function')
+    ? sizes
+    : function (e) { return sizes[e.time]; };
+  var sorted = keptPriority.slice().sort(function (a, b) { return a.time - b.time; });
+  var slots = [];
+  var offset = 0;
+  var liveSlot = -1;
+  for (var i = 0; i < sorted.length; i++) {
+    var len = sizeFn(sorted[i]);
+    slots.push({
+      slot: i,
+      offset: offset,
+      len: len,
+      time: sorted[i].time,
+      path: sorted[i].path,
+      kind: sorted[i].kind
+    });
+    if (sorted[i].kind === 'live') liveSlot = i;
+    offset += len;
+  }
+  return { slots: slots, liveSlot: liveSlot, totalBytes: offset, count: slots.length };
+}
+
+function writeU32LE(out, v) {
+  out.push(v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >> 24) & 255);
+}
+
+// encode the layout blob defined in radar.h
+function encodeLayout(layout) {
+  var out = [1, layout.slots.length, layout.liveSlot, 0];
+  for (var i = 0; i < layout.slots.length; i++) {
+    writeU32LE(out, layout.slots[i].offset);
+    writeU32LE(out, layout.slots[i].len);
+    writeU32LE(out, layout.slots[i].time >>> 0);
+  }
+  return out;
+}
+
+function decodeLayout(bytes) {
+  var n = bytes[1];
+  var slots = [];
+  for (var i = 0; i < n; i++) {
+    var base = 4 + i * 12;
+    var off = bytes[base] | (bytes[base + 1] << 8) |
+      (bytes[base + 2] << 16) | (bytes[base + 3] << 24);
+    var len = bytes[base + 4] | (bytes[base + 5] << 8) |
+      (bytes[base + 6] << 16) | (bytes[base + 7] << 24);
+    var time = (bytes[base + 8] | (bytes[base + 9] << 8) |
+      (bytes[base + 10] << 16) | (bytes[base + 11] << 24)) >>> 0;
+    slots.push({ slot: i, offset: off >>> 0, len: len >>> 0, time: time });
+  }
+  return { version: bytes[0], count: n, liveSlot: bytes[2], slots: slots };
+}
+
 module.exports = {
   COLOR_PALETTES: COLOR_PALETTES,
   ACTIVE_PALETTE: ACTIVE_PALETTE,
@@ -209,5 +336,14 @@ module.exports = {
   ditherToMask: ditherToMask,
   fetchMeta: fetchMeta,
   tileUrl: tileUrl,
-  buildRadarImage: buildRadarImage
+  buildRadarImage: buildRadarImage,
+  PAST_MAX: PAST_MAX,
+  NOWCAST_MAX: NOWCAST_MAX,
+  MAX_FRAMES: MAX_FRAMES,
+  priorityOrder: priorityOrder,
+  orderFrames: orderFrames,
+  slotFor: slotFor,
+  layoutSlots: layoutSlots,
+  encodeLayout: encodeLayout,
+  decodeLayout: decodeLayout
 };

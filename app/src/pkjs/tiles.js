@@ -16,6 +16,22 @@ function screenFor(platform) {
   return SCREENS.flint;
 }
 
+// Must match RADAR_ARENA_BYTES in c/radar.h exactly
+var RADAR_ARENA_BYTES = {
+  aplite: 7168,
+  basalt: 37888,
+  chalk: 35840,
+  diorite: 46080,
+  flint: 46080,
+  emery: 92160,
+  gabbro: 86016
+};
+
+function radarArenaFor(platform) {
+  if (RADAR_ARENA_BYTES[platform]) return RADAR_ARENA_BYTES[platform];
+  return RADAR_ARENA_BYTES.aplite;
+}
+
 function latLonToWorldPixel(lat, lon, zoom) {
   var world = TILE_SIZE * Math.pow(2, zoom);
   var x = (lon + 180) / 360 * world;
@@ -216,6 +232,8 @@ function fetchJson(url, callback) {
 module.exports = {
   TILE_SIZE: TILE_SIZE,
   SCREENS: SCREENS,
+  RADAR_ARENA_BYTES: RADAR_ARENA_BYTES,
+  radarArenaFor: radarArenaFor,
   screenFor: screenFor,
   latLonToWorldPixel: latLonToWorldPixel,
   tilesForViewport: tilesForViewport,
