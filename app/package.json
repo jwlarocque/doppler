@@ -41,7 +41,8 @@
       "RadarFrame",
       "RadarLayout",
       "RadarAck",
-      "RadarFull"
+      "RadarFull",
+      "ZoomLevel"
     ],
     "resources": {
       "media": [

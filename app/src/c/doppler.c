@@ -10,11 +10,18 @@ static Layer *s_map_layer;
 static AppTimer *s_play_timer;
 static int s_play_index;
 
+// must match ZOOM_DEFAULT in index.js, since zoom is not communicated before
+// initial load
+#define ZOOM_MIN 3
+#define ZOOM_MAX 7
+#define ZOOM_DEFAULT 6
+static int s_zoom = ZOOM_DEFAULT;
+
 #define RADAR_PLAY_MS 500
 
 static void prv_play_tick(void *context) {
   s_play_index++;
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "radar tick %d", s_play_index);
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "radar tick %d", s_play_index);
   s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
@@ -39,6 +46,9 @@ static const uint8_t DARK_SKY_GCOLOR[16] = {
 
 static void prv_map_update(Layer *layer, GContext *ctx) {
   if (!map_is_ready()) {
+    // clear stale data
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
     return;
   }
   GBitmap *framebuffer = graphics_capture_frame_buffer(ctx);
@@ -159,6 +169,45 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   graphics_release_frame_buffer(ctx, framebuffer);
 }
 
+static void prv_stop_playback(void) {
+  if (s_play_timer) {
+    app_timer_cancel(s_play_timer);
+    s_play_timer = NULL;
+  }
+  s_play_index = 0;
+}
+
+static void prv_try_zoom(int delta) {
+  int next = s_zoom + delta;
+  if (next < ZOOM_MIN || next > ZOOM_MAX) {
+    vibes_double_pulse();
+    return;
+  }
+  s_zoom = next;
+  APP_LOG(APP_LOG_LEVEL_INFO, "zoom change to %d", s_zoom);
+  prv_stop_playback();
+  map_invalidate();
+  radar_invalidate();
+  if (s_map_layer) {
+    layer_mark_dirty(s_map_layer);
+  }
+  comm_send_zoom(s_zoom);
+}
+
+static void prv_zoom_out(ClickRecognizerRef recognizer, void *context) {
+  prv_try_zoom(-1);
+}
+
+static void prv_zoom_in(ClickRecognizerRef recognizer, void *context) {
+  prv_try_zoom(1);
+}
+
+static void prv_click_config(void *context) {
+  // delay 0 uses system default (500ms)
+  window_long_click_subscribe(BUTTON_ID_UP, 0, prv_zoom_out, NULL);
+  window_long_click_subscribe(BUTTON_ID_DOWN, 0, prv_zoom_in, NULL);
+}
+
 static void prv_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -171,11 +220,7 @@ static void prv_window_load(Window *window) {
 }
 
 static void prv_window_unload(Window *window) {
-  if (s_play_timer) {
-    app_timer_cancel(s_play_timer);
-    s_play_timer = NULL;
-  }
-  s_play_index = 0;
+  prv_stop_playback();
   map_set_layer(NULL);
   radar_set_layer(NULL);
   layer_destroy(s_map_layer);
@@ -185,6 +230,7 @@ static void prv_init(void) {
   radar_init();
   comm_init();
   s_window = window_create();
+  window_set_click_config_provider(s_window, prv_click_config);
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = prv_window_load,
     .unload = prv_window_unload,

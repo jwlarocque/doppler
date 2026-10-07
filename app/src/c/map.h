@@ -20,6 +20,9 @@ void map_begin(int32_t total);
 void map_chunk(const uint8_t *data, uint16_t length, int32_t index);
 void map_complete(int32_t uncompressed_length);
 
+// discard the current image and paint background color until new map available
+void map_invalidate(void);
+
 void map_set_layer(Layer *layer);
 bool map_is_ready(void);
 const uint8_t *map_raw(void);

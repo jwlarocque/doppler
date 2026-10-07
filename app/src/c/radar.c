@@ -67,6 +67,13 @@ void radar_init(void) {
 #endif
 }
 
+void radar_invalidate(void) {
+  prv_reset_session();
+  s_live_total = 0;
+  s_live_received = 0;
+  s_live_ready = false;
+}
+
 void radar_live_begin(int32_t total) {
   prv_reset_session();
   s_live_total = 0;
@@ -100,7 +107,12 @@ void radar_live_chunk(const uint8_t *data, uint16_t length, int32_t index) {
 }
 
 void radar_live_complete(int32_t uncompressed_length) {
-  if (s_live_total <= 0 || s_live_received != s_live_total ||
+  if (s_live_total <= 0) {
+    // no live transfer in progress (e.g. a stale session-teardown
+    // count arriving after the session was discarded); ignore it
+    return;
+  }
+  if (s_live_received != s_live_total ||
       uncompressed_length != RADAR_RAW_BYTES) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "radar live incomplete, received %d of %d raw %d",
             (int)s_live_received, (int)s_live_total, (int)uncompressed_length);

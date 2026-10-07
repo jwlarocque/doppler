@@ -59,6 +59,10 @@ void map_set_layer(Layer *layer) {
   s_layer = layer;
 }
 
+void map_invalidate(void) {
+  s_ready = false;
+}
+
 bool map_is_ready(void) {
   return s_ready;
 }

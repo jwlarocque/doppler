@@ -1,6 +1,7 @@
 var CHUNK_SIZE = 1500;
 
-function sendChunk(packet, index, uncompressedLength, keys, chunkSize, onDone, onFail) {
+function sendChunk(packet, index, uncompressedLength, keys, chunkSize, onDone, onFail, shouldAbort) {
+  if (shouldAbort && shouldAbort()) return;
   if (index >= packet.length) {
     var done = {};
     done[keys.done] = uncompressedLength;
@@ -12,22 +13,24 @@ function sendChunk(packet, index, uncompressedLength, keys, chunkSize, onDone, o
   dict[keys.chunk] = Array.prototype.slice.call(packet, index, index + size);
   dict[keys.index] = index;
   Pebble.sendAppMessage(dict, function () {
-    sendChunk(packet, index + size, uncompressedLength, keys, chunkSize, onDone, onFail);
+    sendChunk(packet, index + size, uncompressedLength, keys, chunkSize, onDone, onFail, shouldAbort);
   }, onFail);
 }
 
-function sendBlob(packet, uncompressedLength, keys, onDone, onFail, chunkSize) {
+function sendBlob(packet, uncompressedLength, keys, onDone, onFail, chunkSize, shouldAbort) {
+  if (shouldAbort && shouldAbort()) return;
   var start = {};
   start[keys.length] = packet.length;
   Pebble.sendAppMessage(start, function () {
-    sendChunk(packet, 0, uncompressedLength, keys, chunkSize || CHUNK_SIZE, onDone, onFail);
+    sendChunk(packet, 0, uncompressedLength, keys, chunkSize || CHUNK_SIZE, onDone, onFail, shouldAbort);
   }, onFail);
 }
 
 // chunk stream without a trailing Done (multi-frame is terminated by RadarAck
 // once received bytes == header length)
-function sendChunks(packet, keys, chunkSize, onDone, onFail) {
+function sendChunks(packet, keys, chunkSize, onDone, onFail, shouldAbort) {
   function next(index) {
+    if (shouldAbort && shouldAbort()) return;
     if (index >= packet.length) {
       onDone();
       return;
@@ -56,12 +59,12 @@ var RADAR_KEYS = {
 // layout ack slot from the watch (RADAR_ACK_LAYOUT in radar.h)
 var LAYOUT_ACK = -1;
 
-function sendMap(packet, uncompressedLength, onDone, onFail, chunkSize) {
-  sendBlob(packet, uncompressedLength, MAP_KEYS, onDone, onFail, chunkSize);
+function sendMap(packet, uncompressedLength, onDone, onFail, chunkSize, shouldAbort) {
+  sendBlob(packet, uncompressedLength, MAP_KEYS, onDone, onFail, chunkSize, shouldAbort);
 }
 
-function sendRadar(packet, uncompressedLength, onDone, onFail, chunkSize) {
-  sendBlob(packet, uncompressedLength, RADAR_KEYS, onDone, onFail, chunkSize);
+function sendRadar(packet, uncompressedLength, onDone, onFail, chunkSize, shouldAbort) {
+  sendBlob(packet, uncompressedLength, RADAR_KEYS, onDone, onFail, chunkSize, shouldAbort);
 }
 
 function sendRadarHeader(slot, packetLength, onDone, onFail) {
@@ -71,8 +74,8 @@ function sendRadarHeader(slot, packetLength, onDone, onFail) {
   Pebble.sendAppMessage(dict, onDone, onFail);
 }
 
-function sendRadarChunks(packet, onDone, onFail, chunkSize) {
-  sendChunks(packet, RADAR_KEYS, chunkSize || CHUNK_SIZE, onDone, onFail);
+function sendRadarChunks(packet, onDone, onFail, chunkSize, shouldAbort) {
+  sendChunks(packet, RADAR_KEYS, chunkSize || CHUNK_SIZE, onDone, onFail, shouldAbort);
 }
 
 function sendRadarLayout(layoutBytes, onDone, onFail) {

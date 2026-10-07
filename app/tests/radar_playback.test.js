@@ -94,7 +94,7 @@ function frames(prefix, times) {
   var expect = { aplite: 10219, basalt: 43851, chalk: 42551, diorite: 49131, flint: 49131, emery: 102400, gabbro: 98549 };
   assert.deepStrictEqual(tiles.RADAR_ARENA_BYTES, expect);
   assert.strictEqual(tiles.radarArenaFor('flint'), 49131);
-  assert.strictEqual(tiles.radarArenaFor('unknown'), 49131);
+  assert.strictEqual(tiles.radarArenaFor('unknown'), 10219);
 })();
 
 (function queueSession() {

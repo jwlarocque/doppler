@@ -64,6 +64,9 @@
 
 // live frame received to arena offset 0 and immediately displayed
 void radar_init(void);
+
+// discard all frames so no radar data is displayed until new data is available
+void radar_invalidate(void);
 void radar_live_begin(int32_t total);
 void radar_live_chunk(const uint8_t *data, uint16_t length, int32_t index);
 void radar_live_complete(int32_t uncompressed_length);

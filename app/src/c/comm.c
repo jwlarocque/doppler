@@ -37,6 +37,10 @@ void comm_send_full(int32_t slot) {
   prv_send_int(MESSAGE_KEY_RadarFull, slot);
 }
 
+void comm_send_zoom(int32_t zoom) {
+  prv_send_int(MESSAGE_KEY_ZoomLevel, zoom);
+}
+
 static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *length_tuple = dict_find(iter, MESSAGE_KEY_MapLength);
   if (length_tuple) {
