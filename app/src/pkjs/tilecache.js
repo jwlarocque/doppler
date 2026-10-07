@@ -1,5 +1,5 @@
 // LRU cache of raw tile data, keyed by tile URL
-var MAX_ENTRIES = 1024;
+var MAX_ENTRIES = 128;
 
 function TileCache(limit) {
   this.limit = (typeof limit === 'number' && limit > 0) ? limit : MAX_ENTRIES;

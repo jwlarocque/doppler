@@ -21,6 +21,11 @@ var lastScreen = null;
 var lastPlatform = 'aplite';
 var currentZoom = ZOOM_DEFAULT;
 
+// last radar metadata (baseline for refreshes)
+var lastMeta = null;
+var pollTimer = null;
+var POLL_MS = 5 * 60 * 1000;
+
 // tracks data stalesness so it can be dropped (after zoom change)
 var generation = 0;
 function alive(gen) {
@@ -30,12 +35,15 @@ function abortIfStale(gen) {
   return function () { return gen !== generation; };
 }
 
-// raw tile bytes cached by URL (z/x/y)
-var sharedCache = new tilecache.TileCache(tilecache.MAX_ENTRIES);
-function cachedTileFetcher(urlFor) {
+// map and past tiles are not expected to change, so are retained
+var mapCache = new tilecache.TileCache(tilecache.MAX_ENTRIES);
+var pastCache = new tilecache.TileCache(tilecache.MAX_ENTRIES);
+// nowcast cache is cleared on refresh
+var nowcastCache = new tilecache.TileCache(tilecache.MAX_ENTRIES);
+function cachedTileFetcher(cache, urlFor) {
   return function (z, x, y, cb) {
     var url = urlFor(z, x, y);
-    tilecache.cachedFetch(sharedCache, tiles.fetchArrayBuffer, url, cb);
+    tilecache.cachedFetch(cache, tiles.fetchArrayBuffer, url, cb);
   };
 }
 
@@ -85,7 +93,7 @@ function sendMapForFix(fix, screen, viewport, gen, next) {
   function urlFor(z, x, y) {
     return map.tileUrl(z, x, y);
   }
-  map.buildMapImage(cachedTileFetcher(urlFor), viewport, screen, function (buildErr, res) {
+  map.buildMapImage(cachedTileFetcher(mapCache, urlFor), viewport, screen, function (buildErr, res) {
     if (!alive(gen)) return;
     if (buildErr) {
       console.log('map build failed: ' + buildErr.message);
@@ -100,7 +108,8 @@ function buildOneFrame(host, entry, viewport, screen, callback) {
   function urlFor(z, x, y) {
     return radar.tileUrl(host, entry.path, z, x, y);
   }
-  radar.buildRadarImage(cachedTileFetcher(urlFor), viewport, screen, entry, callback);
+  var cache = entry.kind === 'nowcast' ? nowcastCache : pastCache;
+  radar.buildRadarImage(cachedTileFetcher(cache, urlFor), viewport, screen, entry, callback);
 }
 
 function sendTerminal(session) {
@@ -195,6 +204,7 @@ function sendRadarForFix(fix, screen, platform, viewport, hostOverride, gen) {
       console.log('radar meta failed: ' + metaErr.message);
       return;
     }
+    lastMeta = meta;
     var live = { kind: 'live', time: meta.time, path: meta.path };
     // radar.c cannot accept layout data until the live frame is completely
     // sent and acked
@@ -254,6 +264,27 @@ function loadAndSend(gen) {
   sendMapForFix(fix, screen, viewport, gen, function () {
     if (!alive(gen)) return;
     sendRadarForFix(fix, screen, platform, viewport, undefined, gen);
+  });
+}
+
+// poll weather-maps.json for new radar data
+// on change, clear nowcast cache and then re-run sendRadarForFix
+function pollForUpdate() {
+  if (!lastMeta || !lastFix || !lastScreen || activeSession) return;
+  var gen = generation;
+  var base = lastMeta;
+  radar.fetchMeta(base.host, function (metaErr, meta) {
+    if (!alive(gen) || activeSession || lastMeta !== base) return;
+    if (metaErr) {
+      console.log('refresh meta failed: ' + metaErr.message);
+      return;
+    }
+    if (!radar.metaChanged(base, meta)) return;
+    console.log('refresh triggered, reloading radar');
+    nowcastCache.clear();
+    generation++;
+    var viewport = tiles.viewportFor(lastFix.lat, lastFix.lon, currentZoom, lastScreen);
+    sendRadarForFix(lastFix, lastScreen, lastPlatform, viewport, base.host, generation);
   });
 }
 
@@ -333,6 +364,17 @@ Pebble.addEventListener('ready', function () {
     lastScreen = screen;
     lastPlatform = platform;
     loadAndSend(generation);
+    if (typeof setInterval !== 'undefined' && pollTimer === null) {
+      pollTimer = setInterval(function () {
+        try {
+          pollForUpdate();
+        } catch (e) {
+          console.log('refresh poll failed: ' + e.message);
+        }
+      }, POLL_MS);
+      // do not hold a node test process open for the poll timer
+      if (pollTimer && typeof pollTimer.unref === 'function') pollTimer.unref();
+    }
   });
 });
 }
@@ -342,6 +384,11 @@ if (typeof module !== 'undefined' && module.exports) {
     ZOOM_MIN: ZOOM_MIN,
     ZOOM_MAX: ZOOM_MAX,
     ZOOM_DEFAULT: ZOOM_DEFAULT,
-    isValidZoom: isValidZoom
+    POLL_MS: POLL_MS,
+    isValidZoom: isValidZoom,
+    __testonly_pollForUpdate: pollForUpdate,
+    __testonly_getState: function () {
+      return { lastMeta: lastMeta };
+    }
   };
 }

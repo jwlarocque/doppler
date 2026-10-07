@@ -164,6 +164,25 @@ function tileUrl(host, path, z, x, y) {
   return host + path + '/256/' + z + '/' + x + '/' + y + '/0/0_1.png';
 }
 
+// returns true when new radar data is available:
+// - new past frame (replaces a nowcast)
+// - new nowcast frame (new timestamp)
+function metaChanged(oldMeta, newMeta) {
+  if (!oldMeta || !newMeta) return false;
+  var oldPast = oldMeta.past || [];
+  var newPast = newMeta.past || [];
+  var oldLatest = oldPast.length ? oldPast[oldPast.length - 1].time : -1;
+  var newLatest = newPast.length ? newPast[newPast.length - 1].time : -1;
+  if (newLatest !== oldLatest) return true;
+  var oldNow = oldMeta.nowcast || [];
+  var newNow = newMeta.nowcast || [];
+  if (newNow.length !== oldNow.length) return true;
+  for (var i = 0; i < newNow.length; i++) {
+    if (newNow[i].time !== oldNow[i].time) return true;
+  }
+  return false;
+}
+
 function decodeTile(bytes) {
   return { data: png.decodeRgbaPng(bytes).rgba, bytesPerPixel: 4 };
 }
@@ -336,6 +355,7 @@ module.exports = {
   ditherToMask: ditherToMask,
   fetchMeta: fetchMeta,
   tileUrl: tileUrl,
+  metaChanged: metaChanged,
   buildRadarImage: buildRadarImage,
   PAST_MAX: PAST_MAX,
   NOWCAST_MAX: NOWCAST_MAX,
