@@ -85,12 +85,7 @@ bool radar_has_layout(void);
 bool radar_is_session_done(void);
 void radar_set_terminal_count(int32_t count);
 
-// information for playback (count frames are available starting from base)
 int radar_count(void);
-int radar_base(void);
-int radar_num_frames(void);
-int radar_live_slot(void);
-int radar_resident_count(void);
 const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, int32_t *time_out);
 
 void radar_set_layer(Layer *layer);

@@ -59,23 +59,14 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   int play_count = radar_count();
   const uint8_t *radar = NULL;
   int32_t radar_len = 0;
-  if (play_count >= 2) {
-    int slot = radar_base() + (s_play_index % play_count);
+  if (radar_is_session_done() && play_count >= 2) {
+    int slot = s_play_index % play_count;
     radar = radar_frame_at(slot, &radar_len, NULL);
-    if (!radar) {
-      radar = radar_compressed();
-      radar_len = radar_compressed_length();
-    }
     if (!s_play_timer) {
       APP_LOG(APP_LOG_LEVEL_INFO, "radar playback start, frames %d", play_count);
       s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
     }
   } else {
-    if (s_play_timer) {
-      app_timer_cancel(s_play_timer);
-      s_play_timer = NULL;
-      s_play_index = 0;
-    }
     if (radar_is_ready()) {
       radar = radar_compressed();
       radar_len = radar_compressed_length();

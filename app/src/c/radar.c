@@ -17,9 +17,6 @@ static bool s_resident[RADAR_MAX_FRAMES];
 
 static int s_num_frames;
 static int s_live_slot;
-static int s_play_lo;
-static int s_play_hi;
-static int s_resident_count;
 static bool s_has_layout;
 static bool s_session_done;
 
@@ -41,9 +38,6 @@ static uint32_t prv_read_u32(const uint8_t *p) {
 static void prv_reset_session(void) {
   s_num_frames = 0;
   s_live_slot = -1;
-  s_play_lo = -1;
-  s_play_hi = -1;
-  s_resident_count = 0;
   s_has_layout = false;
   s_session_done = false;
   s_recv_slot = -1;
@@ -186,9 +180,6 @@ bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
   }
   s_num_frames = n;
   s_live_slot = live;
-  s_play_lo = live;
-  s_play_hi = live;
-  s_resident_count = 1;
   s_has_layout = true;
   s_session_done = false;
   s_recv_slot = -1;
@@ -245,18 +236,8 @@ bool radar_frame_chunk(const uint8_t *data, uint16_t length, int32_t index) {
   s_recv_total = 0;
   s_recv_received = 0;
   s_resident[slot] = true;
-  s_resident_count++;
-  if (slot < s_play_lo) {
-    s_play_lo = slot;
-  }
-  if (slot > s_play_hi) {
-    s_play_hi = slot;
-  }
-  APP_LOG(APP_LOG_LEVEL_INFO, "radar frame %d resident (%d/%d)", slot,
-          s_resident_count, s_num_frames);
-  if (s_layer) {
-    layer_mark_dirty(s_layer);
-  }
+  APP_LOG(APP_LOG_LEVEL_INFO, "radar frame %d resident (of %d)", slot,
+          s_num_frames);
   return true;
 }
 
@@ -270,8 +251,8 @@ bool radar_is_session_done(void) {
 
 void radar_set_terminal_count(int32_t count) {
   s_session_done = true;
-  APP_LOG(APP_LOG_LEVEL_INFO, "radar session done, kept %d resident %d heap %d",
-          (int)count, s_resident_count, (int)heap_bytes_free());
+  APP_LOG(APP_LOG_LEVEL_INFO, "radar session done, frames %d heap %d",
+          (int)count, (int)heap_bytes_free());
   if (s_layer) {
     layer_mark_dirty(s_layer);
   }
@@ -281,32 +262,10 @@ int radar_count(void) {
   if (!s_live_ready) {
     return 0;
   }
-  if (!s_has_layout) {
+  if (!s_has_layout || !s_session_done) {
     return 1;
   }
-  return s_play_hi - s_play_lo + 1;
-}
-
-int radar_base(void) {
-  if (!s_has_layout) {
-    return 0;
-  }
-  return s_play_lo;
-}
-
-int radar_num_frames(void) {
   return s_num_frames;
-}
-
-int radar_live_slot(void) {
-  return s_live_slot;
-}
-
-int radar_resident_count(void) {
-  if (!s_live_ready) {
-    return 0;
-  }
-  return s_has_layout ? s_resident_count : 1;
 }
 
 const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, int32_t *time_out) {
