@@ -69,6 +69,15 @@ function viewportFor(lat, lon, zoom, screen) {
   return { center: center, view: view, zoom: zoom, screenW: screen.w, screenH: screen.h };
 }
 
+// euclidean distance in pixels at the given zoom
+function worldPixelDistanceAtZoom(lat1, lon1, lat2, lon2, zoom) {
+  var a = latLonToWorldPixel(lat1, lon1, zoom);
+  var b = latLonToWorldPixel(lat2, lon2, zoom);
+  var dx = a.x - b.x;
+  var dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 // fetch every tile in the viewport and stitch to a screen-sized buffer
 function fetchViewport(fetcher, viewport, decodeTile, callback) {
   var view = viewport.view;
@@ -238,6 +247,7 @@ module.exports = {
   latLonToWorldPixel: latLonToWorldPixel,
   tilesForViewport: tilesForViewport,
   viewportFor: viewportFor,
+  worldPixelDistanceAtZoom: worldPixelDistanceAtZoom,
   fetchViewport: fetchViewport,
   stitchAndCrop: stitchAndCrop,
   clearCorners: clearCorners,

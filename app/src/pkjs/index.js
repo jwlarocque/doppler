@@ -26,6 +26,11 @@ var lastMeta = null;
 var pollTimer = null;
 var POLL_MS = 5 * 60 * 1000;
 
+// location re-centering is triggered by distance in pixels exceeding this
+// fraction of screen width at this zoom
+var LOCATION_CHECK_ZOOM = 7;
+var LOCATION_FRACTION = 0.2;
+
 // tracks data stalesness so it can be dropped (after zoom change)
 var generation = 0;
 function alive(gen) {
@@ -47,10 +52,15 @@ function cachedTileFetcher(cache, urlFor) {
   };
 }
 
-function currentFix(callback) {
+function currentFix(callback, allowFallback) {
+  var fallback = allowFallback !== false;
   if (config.useTestFix || typeof navigator === 'undefined' ||
       !navigator.geolocation) {
-    callback(null, { lat: config.testLat, lon: config.testLon, test: true });
+    if (fallback) {
+      callback(null, { lat: config.testLat, lon: config.testLon, test: true });
+    } else {
+      callback(new Error('no geolocation'));
+    }
     return;
   }
   navigator.geolocation.getCurrentPosition(
@@ -58,11 +68,22 @@ function currentFix(callback) {
       callback(null, { lat: pos.coords.latitude, lon: pos.coords.longitude, test: false });
     },
     function (err) {
-      console.log('geolocation failed (' + err.message + '), using test fix');
-      callback(null, { lat: config.testLat, lon: config.testLon, test: true });
+      if (fallback) {
+        console.log('geolocation failed (' + err.message + '), using test fix');
+        callback(null, { lat: config.testLat, lon: config.testLon, test: true });
+      } else {
+        callback(new Error('geolocation failed (' + err.message + ')'));
+      }
     },
-    { timeout: 10000, maximumAge: 600000 }
+    { timeout: 10000, maximumAge: fallback ? 600000 : 60000 }
   );
+}
+
+function needsRelocation(oldFix, newFix, screen) {
+  if (!oldFix || !newFix || !screen) return false;
+  var distance = tiles.worldPixelDistanceAtZoom(
+    oldFix.lat, oldFix.lon, newFix.lat, newFix.lon, LOCATION_CHECK_ZOOM);
+  return distance > LOCATION_FRACTION * screen.w;
 }
 
 function compressAndSend(kind, res, fix, screen, detail, gen, onSettled) {
@@ -288,6 +309,26 @@ function pollForUpdate() {
   });
 }
 
+// poll location then radar data for updates
+function pollForLocationOrUpdate() {
+  if (!lastFix || !lastScreen) return;
+  var gen = generation;
+  currentFix(function (fixErr, fix) {
+    if (!alive(gen)) return;
+    if (!fixErr && needsRelocation(lastFix, fix, lastScreen)) {
+      console.log('relocating for moved user');
+      lastFix = fix;
+      generation++;
+      activeSession = null;
+      activeCtx = null;
+      loadAndSend(generation);
+      return;
+    }
+    if (fixErr) console.log('location poll failed: ' + fixErr.message);
+    pollForUpdate();
+  }, false);
+}
+
 function isValidZoom(zoom) {
   return typeof zoom === 'number' && zoom >= ZOOM_MIN && zoom <= ZOOM_MAX;
 }
@@ -367,7 +408,7 @@ Pebble.addEventListener('ready', function () {
     if (typeof setInterval !== 'undefined' && pollTimer === null) {
       pollTimer = setInterval(function () {
         try {
-          pollForUpdate();
+          pollForLocationOrUpdate();
         } catch (e) {
           console.log('refresh poll failed: ' + e.message);
         }
@@ -385,10 +426,14 @@ if (typeof module !== 'undefined' && module.exports) {
     ZOOM_MAX: ZOOM_MAX,
     ZOOM_DEFAULT: ZOOM_DEFAULT,
     POLL_MS: POLL_MS,
+    LOCATION_CHECK_ZOOM: LOCATION_CHECK_ZOOM,
+    LOCATION_FRACTION: LOCATION_FRACTION,
     isValidZoom: isValidZoom,
+    needsRelocation: needsRelocation,
     __testonly_pollForUpdate: pollForUpdate,
+    __testonly_pollForLocationOrUpdate: pollForLocationOrUpdate,
     __testonly_getState: function () {
-      return { lastMeta: lastMeta };
+      return { lastMeta: lastMeta, lastFix: lastFix, lastScreen: lastScreen };
     }
   };
 }
