@@ -94,13 +94,13 @@ var index = require('../src/pkjs/index.js');
   assert.strictEqual(mapBuilds, 1, 'initial load builds map');
   var base = mapBuilds;
 
-  // small move: no rebuild, falls through to metadata check
+  // small move: no rebuild, marker-only update, falls through to metadata check
   nextFix = { lat: 0, lon: 0.1 };
   index.__testonly_pollForLocationOrUpdate();
   assert.strictEqual(mapBuilds, base, 'small move does not rebuild');
   assert.deepStrictEqual(
     [index.__testonly_getState().lastFix.lat, index.__testonly_getState().lastFix.lon],
-    [0, 0], 'small move keeps old fix');
+    [0, 0.1], 'small move updates fix without reload');
 
   // big move: aborts and rebuilds map + radar
   nextFix = { lat: 0, lon: 1.0 };

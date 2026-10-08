@@ -90,10 +90,20 @@ function sendRadarDoneCount(count, onDone, onFail) {
   Pebble.sendAppMessage(dict, onDone, onFail);
 }
 
+var MARKER_KEYS = { x: 'MarkerX', y: 'MarkerY' };
+
+function sendMarker(x, y, onDone, onFail) {
+  var dict = {};
+  dict[MARKER_KEYS.x] = x;
+  dict[MARKER_KEYS.y] = y;
+  Pebble.sendAppMessage(dict, onDone, onFail);
+}
+
 module.exports = {
   CHUNK_SIZE: CHUNK_SIZE,
   MAP_KEYS: MAP_KEYS,
   RADAR_KEYS: RADAR_KEYS,
+  MARKER_KEYS: MARKER_KEYS,
   LAYOUT_ACK: LAYOUT_ACK,
   sendBlob: sendBlob,
   sendMap: sendMap,
@@ -101,5 +111,6 @@ module.exports = {
   sendRadarHeader: sendRadarHeader,
   sendRadarChunks: sendRadarChunks,
   sendRadarLayout: sendRadarLayout,
-  sendRadarDoneCount: sendRadarDoneCount
+  sendRadarDoneCount: sendRadarDoneCount,
+  sendMarker: sendMarker
 };

@@ -78,6 +78,20 @@ function worldPixelDistanceAtZoom(lat1, lon1, lat2, lon2, zoom) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+// screen position of a fix relative to a viewport built for viewportFix
+// at the given zoom (screen center when the fixes match)
+function markerForViewport(lat, lon, viewportFix, zoom, screen) {
+  var live = latLonToWorldPixel(lat, lon, zoom);
+  var center = latLonToWorldPixel(viewportFix.lat, viewportFix.lon, zoom);
+  var x = Math.round(screen.w / 2 + live.x - center.x);
+  var y = Math.round(screen.h / 2 + live.y - center.y);
+  if (x < 0) x = 0;
+  if (x > screen.w - 1) x = screen.w - 1;
+  if (y < 0) y = 0;
+  if (y > screen.h - 1) y = screen.h - 1;
+  return { x: x, y: y };
+}
+
 // fetch every tile in the viewport and stitch to a screen-sized buffer
 function fetchViewport(fetcher, viewport, decodeTile, callback) {
   var view = viewport.view;
@@ -248,6 +262,7 @@ module.exports = {
   tilesForViewport: tilesForViewport,
   viewportFor: viewportFor,
   worldPixelDistanceAtZoom: worldPixelDistanceAtZoom,
+  markerForViewport: markerForViewport,
   fetchViewport: fetchViewport,
   stitchAndCrop: stitchAndCrop,
   clearCorners: clearCorners,

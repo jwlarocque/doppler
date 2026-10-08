@@ -42,7 +42,9 @@
       "RadarLayout",
       "RadarAck",
       "RadarFull",
-      "ZoomLevel"
+      "ZoomLevel",
+      "MarkerX",
+      "MarkerY"
     ],
     "resources": {
       "media": [

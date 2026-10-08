@@ -21,6 +21,11 @@ var lastScreen = null;
 var lastPlatform = 'aplite';
 var currentZoom = ZOOM_DEFAULT;
 
+// fix the current map viewport was built for
+var lastViewportFix = null;
+// last marker position sent to the watch
+var lastMarker = null;
+
 // last radar metadata (baseline for refreshes)
 var lastMeta = null;
 var pollTimer = null;
@@ -100,12 +105,12 @@ function compressAndSend(kind, res, fix, screen, detail, gen, onSettled) {
     (compressed ? ' (lz4-block, ' + ratio + '%)' : ' (uncompressed)') +
     (fix.test ? ' (test fix)' : ''));
   var sender = kind === 'radar' ? send.sendRadar : send.sendMap;
-  function settled() {
-    if (onSettled) onSettled();
+  function settled(success) {
+    if (onSettled) onSettled(success);
   }
   sender(packet, res.packed.length,
-    function () { console.log(kind + ' sent'); settled(); },
-    function () { console.log(kind + ' send failed'); settled(); },
+    function () { console.log(kind + ' sent'); settled(true); },
+    function () { console.log(kind + ' send failed'); settled(false); },
     screen.chunk, abortIfStale(gen));
   return packet;
 }
@@ -118,7 +123,7 @@ function sendMapForFix(fix, screen, viewport, gen, next) {
     if (!alive(gen)) return;
     if (buildErr) {
       console.log('map build failed: ' + buildErr.message);
-      if (next) next();
+      if (next) next(false);
       return;
     }
     compressAndSend('map', res, fix, screen, null, gen, next);
@@ -280,12 +285,27 @@ function loadAndSend(gen) {
   var screen = lastScreen;
   var platform = lastPlatform;
   var viewport = tiles.viewportFor(fix.lat, fix.lon, currentZoom, screen);
-  // send map, then radar layout and frames sequentially, to avoid overflowing
+  lastViewportFix = fix;
+  lastMarker = null;
+  // send map, then marker and radar sequentially, to avoid overflowing
   // watch inbox
-  sendMapForFix(fix, screen, viewport, gen, function () {
+  sendMapForFix(fix, screen, viewport, gen, function (mapOk) {
     if (!alive(gen)) return;
+    if (mapOk) sendMarkerForFix(fix, lastViewportFix);
     sendRadarForFix(fix, screen, platform, viewport, undefined, gen);
   });
+}
+
+function sendMarkerForFix(fix, viewportFix) {
+  if (!fix || !viewportFix || !lastScreen) return;
+  var marker = tiles.markerForViewport(
+    fix.lat, fix.lon, viewportFix, currentZoom, lastScreen);
+  if (lastMarker && lastMarker.x === marker.x && lastMarker.y === marker.y) return;
+  lastMarker = marker;
+  console.log('marker send x=' + marker.x + ' y=' + marker.y);
+  send.sendMarker(marker.x, marker.y,
+    function () { console.log('marker sent'); },
+    function () { console.log('marker send failed'); });
 }
 
 // poll weather-maps.json for new radar data
@@ -315,7 +335,8 @@ function pollForLocationOrUpdate() {
   var gen = generation;
   currentFix(function (fixErr, fix) {
     if (!alive(gen)) return;
-    if (!fixErr && needsRelocation(lastFix, fix, lastScreen)) {
+    var baseline = lastViewportFix || lastFix;
+    if (!fixErr && needsRelocation(baseline, fix, lastScreen)) {
       console.log('relocating for moved user');
       lastFix = fix;
       generation++;
@@ -324,7 +345,14 @@ function pollForLocationOrUpdate() {
       loadAndSend(generation);
       return;
     }
-    if (fixErr) console.log('location poll failed: ' + fixErr.message);
+    if (fixErr) {
+      console.log('location poll failed: ' + fixErr.message);
+    } else if (lastViewportFix &&
+        (fix.lat !== lastFix.lat || fix.lon !== lastFix.lon)) {
+      console.log('location drift, updating marker');
+      lastFix = fix;
+      sendMarkerForFix(fix, lastViewportFix);
+    }
     pollForUpdate();
   }, false);
 }
@@ -433,7 +461,12 @@ if (typeof module !== 'undefined' && module.exports) {
     __testonly_pollForUpdate: pollForUpdate,
     __testonly_pollForLocationOrUpdate: pollForLocationOrUpdate,
     __testonly_getState: function () {
-      return { lastMeta: lastMeta, lastFix: lastFix, lastScreen: lastScreen };
+      return {
+        lastMeta: lastMeta,
+        lastFix: lastFix,
+        lastScreen: lastScreen,
+        lastViewportFix: lastViewportFix
+      };
     }
   };
 }

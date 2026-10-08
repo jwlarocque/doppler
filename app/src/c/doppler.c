@@ -4,9 +4,11 @@
 #include "lz4.h"
 #include "map.h"
 #include "radar.h"
+#include "ui.h"
 
 static Window *s_window;
 static Layer *s_map_layer;
+static Layer *s_ui_layer;
 static AppTimer *s_play_timer;
 static int s_play_index;
 
@@ -179,6 +181,7 @@ static void prv_try_zoom(int delta) {
   prv_stop_playback();
   map_invalidate();
   radar_invalidate();
+  ui_clear_marker();
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
   }
@@ -208,12 +211,17 @@ static void prv_window_load(Window *window) {
   layer_add_child(window_layer, s_map_layer);
   map_set_layer(s_map_layer);
   radar_set_layer(s_map_layer);
+  s_ui_layer = layer_create(bounds);
+  ui_set_layer(s_ui_layer);
+  layer_add_child(window_layer, s_ui_layer);
 }
 
 static void prv_window_unload(Window *window) {
   prv_stop_playback();
   map_set_layer(NULL);
   radar_set_layer(NULL);
+  ui_set_layer(NULL);
+  layer_destroy(s_ui_layer);
   layer_destroy(s_map_layer);
 }
 
