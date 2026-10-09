@@ -181,7 +181,13 @@ static void prv_try_zoom(int delta) {
   }
   s_zoom = next;
   APP_LOG(APP_LOG_LEVEL_INFO, "zoom change to %d", s_zoom);
-  prv_stop_playback();
+  // cancel the timer and restart at frame 0, but keep s_playing so
+  // playback resumes via prv_map_update once the new session is done
+  if (s_play_timer) {
+    app_timer_cancel(s_play_timer);
+    s_play_timer = NULL;
+  }
+  s_play_index = 0;
   map_invalidate();
   radar_invalidate();
   ui_clear_marker();
