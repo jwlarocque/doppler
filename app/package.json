@@ -63,6 +63,41 @@
           "type": "bitmap",
           "spaceOptimization": "memory",
           "targetPlatforms": ["basalt", "chalk", "emery", "gabbro"]
+        },
+        {
+          "file": "left_black_halo.png",
+          "name": "ICON_LEFT",
+          "type": "bitmap"
+        },
+        {
+          "file": "right_black_halo.png",
+          "name": "ICON_RIGHT",
+          "type": "bitmap"
+        },
+        {
+          "file": "ellipsis_black_halo.png",
+          "name": "ICON_ELLIPSIS",
+          "type": "bitmap"
+        },
+        {
+          "file": "plus_black_halo.png",
+          "name": "ICON_PLUS",
+          "type": "bitmap"
+        },
+        {
+          "file": "minus_black_halo.png",
+          "name": "ICON_MINUS",
+          "type": "bitmap"
+        },
+        {
+          "file": "play_black_halo.png",
+          "name": "ICON_PLAY",
+          "type": "bitmap"
+        },
+        {
+          "file": "pause_black_halo.png",
+          "name": "ICON_PAUSE",
+          "type": "bitmap"
         }
       ]
     }

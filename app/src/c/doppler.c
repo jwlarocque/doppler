@@ -1,6 +1,7 @@
 #include <pebble.h>
 
 #include "comm.h"
+#include "controls.h"
 #include "lz4.h"
 #include "map.h"
 #include "radar.h"
@@ -11,6 +12,7 @@ static Layer *s_map_layer;
 static Layer *s_ui_layer;
 static AppTimer *s_play_timer;
 static int s_play_index;
+static bool s_playing = true;
 
 // must match ZOOM_DEFAULT in index.js, since zoom is not communicated before
 // initial load
@@ -64,7 +66,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   if (radar_is_session_done() && play_count >= 2) {
     int slot = s_play_index % play_count;
     radar = radar_frame_at(slot, &radar_len, NULL);
-    if (!s_play_timer) {
+    if (s_playing && !s_play_timer) {
       APP_LOG(APP_LOG_LEVEL_INFO, "radar playback start, frames %d", play_count);
       s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
     }
@@ -168,6 +170,7 @@ static void prv_stop_playback(void) {
     s_play_timer = NULL;
   }
   s_play_index = 0;
+  s_playing = false;
 }
 
 static void prv_try_zoom(int delta) {
@@ -186,21 +189,57 @@ static void prv_try_zoom(int delta) {
     layer_mark_dirty(s_map_layer);
   }
   comm_send_zoom(s_zoom);
+  controls_refresh_play_icon();
 }
 
-static void prv_zoom_out(ClickRecognizerRef recognizer, void *context) {
-  prv_try_zoom(-1);
+static void prv_frame_step(int delta) {
+  s_playing = false;
+  if (s_play_timer) {
+    app_timer_cancel(s_play_timer);
+    s_play_timer = NULL;
+  }
+  int count = radar_count();
+  if (radar_is_session_done() && count >= 2) {
+    s_play_index = (s_play_index + delta) % count;
+    if (s_play_index < 0) {
+      s_play_index += count;
+    }
+  }
+  if (s_map_layer) {
+    layer_mark_dirty(s_map_layer);
+  }
+  controls_refresh_play_icon();
 }
 
-static void prv_zoom_in(ClickRecognizerRef recognizer, void *context) {
-  prv_try_zoom(1);
+static void prv_toggle_play(void) {
+  if (s_playing) {
+    s_playing = false;
+    if (s_play_timer) {
+      app_timer_cancel(s_play_timer);
+      s_play_timer = NULL;
+    }
+  } else {
+    s_playing = true;
+    if (!s_play_timer && radar_is_ready()) {
+      s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
+    }
+  }
+  if (s_map_layer) {
+    layer_mark_dirty(s_map_layer);
+  }
+  controls_refresh_play_icon();
 }
 
-static void prv_click_config(void *context) {
-  // delay 0 uses system default (500ms)
-  window_long_click_subscribe(BUTTON_ID_UP, 0, prv_zoom_out, NULL);
-  window_long_click_subscribe(BUTTON_ID_DOWN, 0, prv_zoom_in, NULL);
+static bool prv_is_playing(void) {
+  return s_playing;
 }
+
+static const struct DopplerControlsCallbacks s_controls_callbacks = {
+  .frame_step = prv_frame_step,
+  .zoom = prv_try_zoom,
+  .toggle_play = prv_toggle_play,
+  .is_playing = prv_is_playing,
+};
 
 static void prv_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
@@ -214,22 +253,26 @@ static void prv_window_load(Window *window) {
   s_ui_layer = layer_create(bounds);
   ui_set_layer(s_ui_layer);
   layer_add_child(window_layer, s_ui_layer);
+  controls_init(window, &s_controls_callbacks);
 }
 
 static void prv_window_unload(Window *window) {
+  (void)window;
   prv_stop_playback();
+  controls_deinit();
   map_set_layer(NULL);
   radar_set_layer(NULL);
   ui_set_layer(NULL);
   layer_destroy(s_ui_layer);
+  s_ui_layer = NULL;
   layer_destroy(s_map_layer);
+  s_map_layer = NULL;
 }
 
 static void prv_init(void) {
   radar_init();
   comm_init();
   s_window = window_create();
-  window_set_click_config_provider(s_window, prv_click_config);
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = prv_window_load,
     .unload = prv_window_unload,

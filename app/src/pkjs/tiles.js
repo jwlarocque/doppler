@@ -21,10 +21,10 @@ var RADAR_ARENA_BYTES = {
   aplite: 10219,
   basalt: 43851,
   chalk: 42551,
-  diorite: 49131,
-  flint: 49131,
+  diorite: 47131,
+  flint: 47131,
   emery: 102400,
-  gabbro: 98549
+  gabbro: 97549
 };
 
 function radarArenaFor(platform) {
