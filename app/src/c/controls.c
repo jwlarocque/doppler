@@ -11,8 +11,8 @@
 //   - SELECT toggles playback
 // 
 // Layer 2 reverts to layer 1 after (2s) delay.
-// A long press in layer 1 "pushes through" to layer 2, both entering layer 2
-// and immediately performing the action assigned to the same button.
+// A long press in layer 1 "pushes through" to layer 2, temporarily entering
+// layer 2 and performing the action assigned to the same button.
 // Modeled after the stock music app.
 enum ActionBarState {
   ActionBarStateFrame,
@@ -21,18 +21,13 @@ enum ActionBarState {
 };
 
 #define ACTION_BAR_TIMEOUT_MS 2000
-#define ZOOM_REPEAT_INTERVAL_MS 500
 
-// Short tap confirmation. The system music app uses a 30ms vibe score
-// pulse here; third-party apps cannot use vibe scores, so enqueue the
-// same duration as a custom pattern. vibes_short_pulse is 250ms.
+// short vibe confirmation on push-through
 static const uint32_t FEEDBACK_SEGMENTS[] = { 30 };
 
 static ActionBarLayer *s_action_bar;
 static enum ActionBarState s_action_bar_state;
 static AppTimer *s_action_bar_revert_timer;
-static AppTimer *s_zoom_repeat_timer;
-static int s_zoom_repeat_delta;
 
 static GBitmap *s_icon_left;
 static GBitmap *s_icon_right;
@@ -145,60 +140,36 @@ static void prv_enter_zoom_handler(ClickRecognizerRef recognizer, void *context)
 }
 
 static void prv_zoom_out_handler(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
   (void)context;
   prv_reset_action_bar_revert_timer();
   if (s_callbacks.zoom) {
     s_callbacks.zoom(-1);
   }
-  if (click_number_of_clicks_counted(recognizer) >= 2) {
-    prv_feedback();
-  }
 }
 
 static void prv_zoom_in_handler(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
   (void)context;
   prv_reset_action_bar_revert_timer();
   if (s_callbacks.zoom) {
     s_callbacks.zoom(1);
   }
-  if (click_number_of_clicks_counted(recognizer) >= 2) {
-    prv_feedback();
-  }
-}
-
-static void prv_zoom_repeat(void *context) {
-  (void)context;
-  if (!s_zoom_repeat_timer) {
-    return;
-  }
-  s_zoom_repeat_timer = app_timer_register(ZOOM_REPEAT_INTERVAL_MS, prv_zoom_repeat, NULL);
-  if (s_callbacks.zoom) {
-    s_callbacks.zoom(s_zoom_repeat_delta);
-  }
-  prv_feedback();
 }
 
 static void prv_zoom_long_start_handler(ClickRecognizerRef recognizer, void *context) {
   (void)context;
-  s_zoom_repeat_delta = (click_recognizer_get_button_id(recognizer) == BUTTON_ID_UP) ? -1 : 1;
+  int delta = (click_recognizer_get_button_id(recognizer) == BUTTON_ID_UP) ? -1 : 1;
   if (s_callbacks.zoom) {
-    s_callbacks.zoom(s_zoom_repeat_delta);
+    s_callbacks.zoom(delta);
   }
   prv_set_action_bar_state(ActionBarStateLongPress);
   prv_feedback();
-  if (s_zoom_repeat_timer) {
-    app_timer_cancel(s_zoom_repeat_timer);
-  }
-  s_zoom_repeat_timer = app_timer_register(ZOOM_REPEAT_INTERVAL_MS, prv_zoom_repeat, NULL);
 }
 
 static void prv_zoom_long_end_handler(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer;
   (void)context;
-  if (s_zoom_repeat_timer) {
-    app_timer_cancel(s_zoom_repeat_timer);
-    s_zoom_repeat_timer = NULL;
-  }
   prv_set_action_bar_state(ActionBarStateFrame);
 }
 
@@ -243,10 +214,8 @@ static void prv_frame_click_config_provider(void *context) {
 
 static void prv_zoom_click_config_provider(void *context) {
   (void)context;
-  window_single_repeating_click_subscribe(BUTTON_ID_UP, ZOOM_REPEAT_INTERVAL_MS,
-                                          prv_zoom_out_handler);
-  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, ZOOM_REPEAT_INTERVAL_MS,
-                                          prv_zoom_in_handler);
+  window_single_click_subscribe(BUTTON_ID_UP, prv_zoom_out_handler);
+  window_single_click_subscribe(BUTTON_ID_DOWN, prv_zoom_in_handler);
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_play_pause_handler);
 }
 
@@ -292,10 +261,6 @@ void controls_deinit(void) {
   if (s_action_bar_revert_timer) {
     app_timer_cancel(s_action_bar_revert_timer);
     s_action_bar_revert_timer = NULL;
-  }
-  if (s_zoom_repeat_timer) {
-    app_timer_cancel(s_zoom_repeat_timer);
-    s_zoom_repeat_timer = NULL;
   }
   if (s_action_bar) {
     action_bar_layer_remove_from_window(s_action_bar);
