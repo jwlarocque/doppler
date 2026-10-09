@@ -29,6 +29,13 @@ static int32_t s_recv_total;
 static int32_t s_recv_received;
 
 static Layer *s_layer;
+static Layer *s_strip_layer;
+
+static void prv_mark_strip_dirty(void) {
+  if (s_strip_layer) {
+    layer_mark_dirty(s_strip_layer);
+  }
+}
 
 static uint32_t prv_read_u32(const uint8_t *p) {
   return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
@@ -66,6 +73,7 @@ void radar_invalidate(void) {
   s_live_total = 0;
   s_live_received = 0;
   s_live_ready = false;
+  prv_mark_strip_dirty();
 }
 
 void radar_live_begin(int32_t total) {
@@ -185,6 +193,7 @@ bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
   s_recv_slot = -1;
   APP_LOG(APP_LOG_LEVEL_INFO, "radar layout ok n %d live %d heap %d", n, live,
           (int)heap_bytes_free());
+  prv_mark_strip_dirty();
   return true;
 }
 
@@ -238,6 +247,7 @@ bool radar_frame_chunk(const uint8_t *data, uint16_t length, int32_t index) {
   s_resident[slot] = true;
   APP_LOG(APP_LOG_LEVEL_INFO, "radar frame %d resident (of %d)", slot,
           s_num_frames);
+  prv_mark_strip_dirty();
   return true;
 }
 
@@ -256,6 +266,7 @@ void radar_set_terminal_count(int32_t count) {
   if (s_layer) {
     layer_mark_dirty(s_layer);
   }
+  prv_mark_strip_dirty();
 }
 
 int radar_count(void) {
@@ -281,8 +292,27 @@ const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, int32_t *time_out)
   return s_arena + s_offset[slot];
 }
 
+int radar_num_frames(void) {
+  return s_has_layout ? s_num_frames : 0;
+}
+
+int radar_live_slot(void) {
+  return s_has_layout ? s_live_slot : -1;
+}
+
+bool radar_slot_resident(int slot) {
+  if (!s_has_layout || slot < 0 || slot >= s_num_frames) {
+    return false;
+  }
+  return s_resident[slot];
+}
+
 void radar_set_layer(Layer *layer) {
   s_layer = layer;
+}
+
+void radar_set_strip_layer(Layer *layer) {
+  s_strip_layer = layer;
 }
 
 bool radar_is_ready(void) {

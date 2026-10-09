@@ -88,7 +88,13 @@ void radar_set_terminal_count(int32_t count);
 int radar_count(void);
 const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, int32_t *time_out);
 
+// expose layout slot count, live slot index, and slot residency
+int radar_num_frames(void);
+int radar_live_slot(void);
+bool radar_slot_resident(int slot);
+
 void radar_set_layer(Layer *layer);
+void radar_set_strip_layer(Layer *layer);
 // true when live frame is available
 bool radar_is_ready(void);
 // live frame pointer (arena offset 0 before layout move, then actual offset)

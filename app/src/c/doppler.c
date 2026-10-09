@@ -2,6 +2,7 @@
 
 #include "comm.h"
 #include "controls.h"
+#include "frame_strip.h"
 #include "lz4.h"
 #include "map.h"
 #include "radar.h"
@@ -9,6 +10,7 @@
 
 static Window *s_window;
 static Layer *s_map_layer;
+static Layer *s_strip_layer;
 static Layer *s_ui_layer;
 static AppTimer *s_play_timer;
 static int s_play_index;
@@ -256,6 +258,10 @@ static void prv_window_load(Window *window) {
   layer_add_child(window_layer, s_map_layer);
   map_set_layer(s_map_layer);
   radar_set_layer(s_map_layer);
+  s_strip_layer = layer_create(bounds);
+  frame_strip_set_layer(s_strip_layer);
+  layer_add_child(window_layer, s_strip_layer);
+  radar_set_strip_layer(s_strip_layer);
   s_ui_layer = layer_create(bounds);
   ui_set_layer(s_ui_layer);
   layer_add_child(window_layer, s_ui_layer);
@@ -268,9 +274,13 @@ static void prv_window_unload(Window *window) {
   controls_deinit();
   map_set_layer(NULL);
   radar_set_layer(NULL);
+  radar_set_strip_layer(NULL);
+  frame_strip_set_layer(NULL);
   ui_set_layer(NULL);
   layer_destroy(s_ui_layer);
   s_ui_layer = NULL;
+  layer_destroy(s_strip_layer);
+  s_strip_layer = NULL;
   layer_destroy(s_map_layer);
   s_map_layer = NULL;
 }
