@@ -30,6 +30,26 @@
         "capabilities": [
           "COLOR"
         ]
+      },
+      {
+        "type": "select",
+        "messageKey": "Dither",
+        "label": "BW dither pattern",
+        "description": "2x2 is crisper, 4x4 provides more 'shades of gray'",
+        "defaultValue": "2x2",
+        "options": [
+          {
+            "label": "2x2",
+            "value": "2x2"
+          },
+          {
+            "label": "4x4",
+            "value": "4x4"
+          }
+        ],
+        "capabilities": [
+          "BW"
+        ]
       }
     ]
   },

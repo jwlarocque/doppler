@@ -36,7 +36,19 @@ var BAYER_4X4 = [
   [3, 11, 1, 9],
   [15, 7, 13, 5]
 ];
-var DITHER_MATRIX = BAYER_2X2;
+var DITHER_MATRICES = {
+  '2x2': BAYER_2X2,
+  '4x4': BAYER_4X4
+};
+var ACTIVE_DITHER = '2x2';
+
+function setDither(name) {
+  if (name && DITHER_MATRICES[name]) {
+    ACTIVE_DITHER = name;
+    return true;
+  }
+  return false;
+}
 
 // Convert a LiberWXR scheme 0 (grayscale) pixel to {phase, dbz}
 // or null for transparent
@@ -67,7 +79,7 @@ function bwCoverage(dbz, start, end) {
 }
 
 function bwOpaque(f, x, y, matrix) {
-  var m = matrix || DITHER_MATRIX;
+  var m = matrix || DITHER_MATRICES[ACTIVE_DITHER];
   var n = m.length;
   if (f <= 0) return false;
   if (f >= 1) return true;
@@ -354,7 +366,9 @@ module.exports = {
   BW_COVERAGE: BW_COVERAGE,
   BAYER_2X2: BAYER_2X2,
   BAYER_4X4: BAYER_4X4,
-  DITHER_MATRIX: DITHER_MATRIX,
+  DITHER_MATRICES: DITHER_MATRICES,
+  ACTIVE_DITHER: ACTIVE_DITHER,
+  setDither: setDither,
   decodePixel: decodePixel,
   bandIndex: bandIndex,
   ditherBand: ditherBand,

@@ -50,7 +50,8 @@
       "ZoomLevel",
       "MarkerX",
       "MarkerY",
-      "Palette"
+      "Palette",
+      "Dither"
     ],
     "resources": {
       "media": [

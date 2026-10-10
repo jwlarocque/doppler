@@ -383,6 +383,17 @@ function storedPalette() {
   }
 }
 
+// dither pattern from Clay's last saved config page
+function storedDither() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    var saved = JSON.parse(localStorage.getItem('clay-settings') || '{}');
+    if (saved && saved.Dither) radar.setDither(saved.Dither);
+  } catch (e) {
+    console.log('stored dither unreadable: ' + (e && e.message));
+  }
+}
+
 // rebuild radar frames without refetching the map
 function reloadRadar(reason) {
   if (!lastFix || !lastScreen) return;
@@ -422,12 +433,19 @@ Pebble.addEventListener('webviewclosed', function (e) {
   if (palette) {
     msg.Palette = String(palette);
   }
-  if (!Object.keys(msg).length) return;
-  Pebble.sendAppMessage(msg,
-    function () { console.log('config sent'); },
-    function () { console.log('config send failed'); });
+  // radar dither is phone-side only, so it isn't forwarded to the watch
+  var dither = settings.Dither !== undefined ? unwrapSetting(settings.Dither) : null;
+  if (!Object.keys(msg).length && !dither) return;
+  if (Object.keys(msg).length) {
+    Pebble.sendAppMessage(msg,
+      function () { console.log('config sent'); },
+      function () { console.log('config send failed'); });
+  }
+  var ditherApplied = dither && radar.setDither(dither);
   if (palette && radar.setPalette(palette)) {
     reloadRadar('palette changed');
+  } else if (ditherApplied && lastScreen && lastScreen.bw) {
+    reloadRadar('dither changed');
   }
 });
 }
@@ -498,6 +516,7 @@ Pebble.addEventListener('ready', function () {
     console.log('getActiveWatchInfo unavailable, using aplite test screen');
   }
   storedPalette();
+  storedDither();
   currentFix(function (err, fix) {
     lastFix = fix;
     lastScreen = screen;
