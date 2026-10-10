@@ -18,11 +18,11 @@
 // -1 when idle (or when receiving the live frame)
 static int32_t s_incoming_slot = -1;
 
-// notified when the Clay autoplay setting changes
-static void (*s_autoplay_handler)(bool autoplay) = NULL;
+// notified when Clay settings change
+static void (*s_config_handler)(uint32_t changed) = NULL;
 
-void comm_set_autoplay_handler(void (*handler)(bool autoplay)) {
-  s_autoplay_handler = handler;
+void comm_set_config_handler(void (*handler)(uint32_t changed)) {
+  s_config_handler = handler;
 }
 
 static void prv_send_int(uint32_t key, int32_t value) {
@@ -51,10 +51,10 @@ void comm_send_zoom(int32_t zoom) {
 }
 
 static void prv_inbox_received(DictionaryIterator *iter, void *context) {
-  Tuple *autoplay_tuple = dict_find(iter, MESSAGE_KEY_Autoplay);
-  if (autoplay_tuple) {
-    if (config_handle_inbox(iter) && s_autoplay_handler) {
-      s_autoplay_handler(config_get_autoplay());
+  if (dict_find(iter, MESSAGE_KEY_Autoplay) || dict_find(iter, MESSAGE_KEY_Palette)) {
+    uint32_t changed = config_handle_inbox(iter);
+    if (changed != CONFIG_CHANGED_NONE && s_config_handler) {
+      s_config_handler(changed);
     }
     return;
   }

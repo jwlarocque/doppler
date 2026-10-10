@@ -5,7 +5,7 @@ var clay = null;
 try {
   var Clay = require('@rebble/clay');
   var clayConfig = require('./config.json');
-  clay = new Clay(clayConfig, null, { autoHandleEvents: true });
+  clay = new Clay(clayConfig, null, { autoHandleEvents: false });
 } catch (e) {
   console.log('clay unavailable: ' + (e && e.message));
 }
@@ -372,7 +372,65 @@ function isValidZoom(zoom) {
   return typeof zoom === 'number' && zoom >= ZOOM_MIN && zoom <= ZOOM_MAX;
 }
 
+// palette from Clay's last saved config page
+function storedPalette() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    var saved = JSON.parse(localStorage.getItem('clay-settings') || '{}');
+    if (saved && saved.Palette) radar.setPalette(saved.Palette);
+  } catch (e) {
+    console.log('stored palette unreadable: ' + (e && e.message));
+  }
+}
+
+// rebuild radar frames without refetching the map
+function reloadRadar(reason) {
+  if (!lastFix || !lastScreen) return;
+  console.log(reason + ', reloading radar');
+  generation++;
+  activeSession = null;
+  activeCtx = null;
+  var viewport = tiles.viewportFor(lastFix.lat, lastFix.lon, currentZoom, lastScreen);
+  var host = lastMeta ? lastMeta.host : undefined;
+  sendRadarForFix(lastFix, lastScreen, lastPlatform, viewport, host, generation);
+}
+
+function unwrapSetting(v) {
+  return (v && typeof v === 'object' && 'value' in v) ? v.value : v;
+}
+
 if (typeof Pebble !== 'undefined') {
+if (clay) {
+Pebble.addEventListener('showConfiguration', function () {
+  Pebble.openURL(clay.generateUrl());
+});
+
+Pebble.addEventListener('webviewclosed', function (e) {
+  if (!e || !e.response) return;
+  var settings;
+  try {
+    settings = clay.getSettings(e.response, false);
+  } catch (err) {
+    console.log('webviewclosed: bad response: ' + err);
+    return;
+  }
+  var msg = {};
+  if (settings.Autoplay !== undefined) {
+    msg.Autoplay = unwrapSetting(settings.Autoplay) ? 1 : 0;
+  }
+  var palette = settings.Palette !== undefined ? unwrapSetting(settings.Palette) : null;
+  if (palette) {
+    msg.Palette = String(palette);
+  }
+  if (!Object.keys(msg).length) return;
+  Pebble.sendAppMessage(msg,
+    function () { console.log('config sent'); },
+    function () { console.log('config send failed'); });
+  if (palette && radar.setPalette(palette)) {
+    reloadRadar('palette changed');
+  }
+});
+}
 Pebble.addEventListener('appmessage', function (e) {
   var payload = (e && e.payload) || {};
   if (payload.ZoomLevel !== undefined && payload.ZoomLevel !== null) {
@@ -439,6 +497,7 @@ Pebble.addEventListener('ready', function () {
   } else {
     console.log('getActiveWatchInfo unavailable, using aplite test screen');
   }
+  storedPalette();
   currentFix(function (err, fix) {
     lastFix = fix;
     lastScreen = screen;

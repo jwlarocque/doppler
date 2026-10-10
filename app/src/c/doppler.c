@@ -39,7 +39,7 @@ static void prv_play_tick(void *context) {
 
 #ifdef PBL_COLOR
 // NOAA NEXRAD palette (0 is transparent)
-static const uint8_t NEXRAD_GCOLOR[16] __attribute__((unused)) = {
+static const uint8_t NEXRAD_GCOLOR[16] = {
   0x00,
   0xCB, 0xC3, 0xCC, 0xC8, 0xC4, 0xFC,
   0xE8, 0xF8, 0xF0, 0xE0, 0xE0, 0xF3,
@@ -51,6 +51,10 @@ static const uint8_t DARK_SKY_GCOLOR[16] = {
   0xC1, 0xC2, 0xD2, 0xE2, 0xF0, 0xF4, 0xF8, 0xFC, 0xFE,
   0xDF, 0xDF, 0xDB, 0xCB, 0xD7, 0xC7
 };
+
+static const uint8_t *prv_palette_table(void) {
+  return config_get_palette() == PALETTE_NEXRAD ? NEXRAD_GCOLOR : DARK_SKY_GCOLOR;
+}
 #endif
 
 static void prv_map_update(Layer *layer, GContext *ctx) {
@@ -98,7 +102,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   if (radar && circular) {
     int got = lz4_decompress_expand_to_circular(
         radar, radar_len, framebuffer, RADAR_STRIDE,
-        MAP_HEIGHT, DARK_SKY_GCOLOR);
+        MAP_HEIGHT, prv_palette_table());
     radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
     if (!radar_ok) {
       APP_LOG(APP_LOG_LEVEL_ERROR, "radar circular expand failed");
@@ -111,7 +115,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     if (pitch >= MAP_WIDTH) {
       int got = lz4_decompress_expand_to_rows(
           radar, radar_len, row0.data, pitch, RADAR_STRIDE,
-          MAP_HEIGHT, DARK_SKY_GCOLOR);
+          MAP_HEIGHT, prv_palette_table());
       radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
     }
     if (!radar_ok) {
@@ -246,17 +250,25 @@ static bool prv_is_playing(void) {
   return s_playing;
 }
 
-// Clay autoplay setting changed; apply it immediately
-static void prv_autoplay_changed(bool autoplay) {
-  s_playing = autoplay;
-  if (!s_playing && s_play_timer) {
-    app_timer_cancel(s_play_timer);
-    s_play_timer = NULL;
+// Clay settings changed
+// apply autoplay immediately
+// drop stale radar frames on palette change (pkjs will resend)
+static void prv_config_changed(uint32_t changed) {
+  if (changed & CONFIG_CHANGED_AUTOPLAY) {
+    s_playing = config_get_autoplay();
+    if (!s_playing && s_play_timer) {
+      app_timer_cancel(s_play_timer);
+      s_play_timer = NULL;
+    }
+    controls_refresh_play_icon();
+  }
+  if (changed & CONFIG_CHANGED_PALETTE) {
+    radar_invalidate();
+    APP_LOG(APP_LOG_LEVEL_INFO, "palette changed to %d", (int)config_get_palette());
   }
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
   }
-  controls_refresh_play_icon();
 }
 
 // layout slot shown on the map, matching prv_map_update
@@ -322,7 +334,7 @@ static void prv_init(void) {
   s_playing = config_get_autoplay();
   radar_init();
   comm_init();
-  comm_set_autoplay_handler(prv_autoplay_changed);
+  comm_set_config_handler(prv_config_changed);
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = prv_window_load,

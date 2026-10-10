@@ -17,6 +17,14 @@ var COLOR_PALETTES = {
 };
 var ACTIVE_PALETTE = 'darksky';
 
+function setPalette(name) {
+  if (name && COLOR_PALETTES[name]) {
+    ACTIVE_PALETTE = name;
+    return true;
+  }
+  return false;
+}
+
 var BW_COVERAGE = {
   rain: { start: 10, end: 50 },
   snow: { start: 0, end: 40 }
@@ -342,6 +350,7 @@ function decodeLayout(bytes) {
 module.exports = {
   COLOR_PALETTES: COLOR_PALETTES,
   ACTIVE_PALETTE: ACTIVE_PALETTE,
+  setPalette: setPalette,
   BW_COVERAGE: BW_COVERAGE,
   BAYER_2X2: BAYER_2X2,
   BAYER_4X4: BAYER_4X4,

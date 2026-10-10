@@ -11,6 +11,25 @@
         "messageKey": "Autoplay",
         "label": "Autoplay radar",
         "defaultValue": true
+      },
+      {
+        "type": "select",
+        "messageKey": "Palette",
+        "label": "Radar color palette",
+        "defaultValue": "darksky",
+        "options": [
+          {
+            "label": "Dark Sky",
+            "value": "darksky"
+          },
+          {
+            "label": "NOAA NEXRAD",
+            "value": "nexrad"
+          }
+        ],
+        "capabilities": [
+          "COLOR"
+        ]
       }
     ]
   },

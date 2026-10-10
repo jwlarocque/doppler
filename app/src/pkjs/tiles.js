@@ -23,7 +23,7 @@ var RADAR_ARENA_BYTES = {
   chalk: 40551,
   diorite: 47131,
   flint: 45131,
-  emery: 102400,
+  emery: 100400,
   gabbro: 94549
 };
 
