@@ -14,6 +14,7 @@
   #define STRIP_MARGIN 2
   #define STRIP_BOTTOM 2
 #endif
+#define STRIP_MAX_WIDTH 32
 
 #ifdef PBL_ROUND
   #if PBL_DISPLAY_WIDTH >= 200
@@ -58,13 +59,23 @@ static int32_t s_pos = 0;
 static int32_t s_slide_from;
 static int32_t s_slide_to;
 static Animation *s_slide_anim;
+// segment count of the last layout, for use in the exit animation
+static int s_count = 0;
 
-// strip position to layout slot
-static int prv_slot_at_pos(int pos, int live_slot) {
-  int live_pos = RADAR_PAST_MAX - 1;
-  return pos - (live_pos - live_slot);
+static int prv_clamped_count(int num_frames) {
+  if (num_frames < 1) {
+    num_frames = s_count;
+  }
+  if (num_frames < 1) {
+    return 1;
+  }
+  if (num_frames > RADAR_MAX_FRAMES) {
+    return RADAR_MAX_FRAMES;
+  }
+  return num_frames;
 }
 
+// strip position is the layout slot
 static GColor prv_fill_for_slot(int slot, int live_slot, int num_frames) {
   if (slot < 0 || slot >= num_frames) {
 #ifdef PBL_COLOR
@@ -94,12 +105,15 @@ static GColor prv_fill_for_slot(int slot, int live_slot, int num_frames) {
 }
 
 #ifndef PBL_ROUND
-static bool prv_rect_geometry(int width, int height, int y_offset, int *x0,
-                              int *pitch, int *rect_w, int *y0) {
-  int count = RADAR_MAX_FRAMES;
+static bool prv_rect_geometry(int width, int height, int y_offset, int count,
+                              int *x0, int *pitch, int *rect_w, int *y0) {
+  count = prv_clamped_count(count);
   int w = (width - 2 * STRIP_MARGIN - (count - 1) * STRIP_GAP) / count;
   if (w < 3) {
     return false;
+  }
+  if (w > STRIP_MAX_WIDTH) {
+    w = STRIP_MAX_WIDTH;
   }
   int total = count * w + (count - 1) * STRIP_GAP;
   *x0 = (width - total) / 2;
@@ -112,16 +126,16 @@ static bool prv_rect_geometry(int width, int height, int y_offset, int *x0,
 static void prv_draw_rect(GContext *ctx, int width, int height, int num_frames,
                           int live_slot, int y_offset, bool uniform) {
   int x0, pitch, rect_w, y0;
-  if (!prv_rect_geometry(width, height, y_offset, &x0, &pitch, &rect_w, &y0)) {
+  if (!prv_rect_geometry(width, height, y_offset, num_frames, &x0, &pitch,
+                         &rect_w, &y0)) {
     return;
   }
-  int count = RADAR_MAX_FRAMES;
+  int count = prv_clamped_count(num_frames);
   for (int pos = 0; pos < count; pos++) {
     int x = x0 + pos * pitch;
     GColor fill = GColorLightGray;
     if (!uniform) {
-      fill = prv_fill_for_slot(prv_slot_at_pos(pos, live_slot), live_slot,
-                               num_frames);
+      fill = prv_fill_for_slot(pos, live_slot, num_frames);
     }
     graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_rect(ctx, GRect(x, y0, rect_w, STRIP_HEIGHT), 0, GCornerNone);
@@ -132,14 +146,13 @@ static void prv_draw_rect(GContext *ctx, int width, int height, int num_frames,
 }
 
 static void prv_draw_rect_indicator(GContext *ctx, int width, int height,
-                                    int live_slot) {
+                                     int num_frames) {
   int x0, pitch, rect_w, y0;
-  if (!prv_rect_geometry(width, height, s_offset, &x0, &pitch, &rect_w, &y0)) {
+  if (!prv_rect_geometry(width, height, s_offset, num_frames, &x0, &pitch,
+                         &rect_w, &y0)) {
     return;
   }
-  int32_t units = s_pos +
-      (int32_t)(RADAR_PAST_MAX - 1 - live_slot) * SLIDE_UNIT;
-  int x = x0 + (int)((units * pitch + SLIDE_UNIT / 2) / SLIDE_UNIT);
+  int x = x0 + (int)((s_pos * pitch + SLIDE_UNIT / 2) / SLIDE_UNIT);
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, GRect(x - 1, y0 - 1, rect_w + 2, STRIP_HEIGHT + 2),
                      0, GCornerNone);
@@ -162,10 +175,10 @@ static void prv_segment_angles(int pos, int32_t start, int32_t section,
 }
 
 static bool prv_round_geometry(int width, int height, int radius_offset,
-                               int *cx, int *cy, int *radius_out,
+                               int count, int *cx, int *cy, int *radius_out,
                                int32_t *start, int32_t *section, int32_t *gap,
                                int32_t *border) {
-  int count = RADAR_MAX_FRAMES;
+  count = prv_clamped_count(count);
   int radius = (width < height ? width : height) / 2 - ROUND_EDGE
       + radius_offset;
   int mid = radius - STRIP_HEIGHT / 2;
@@ -193,11 +206,11 @@ static void prv_draw_round(GContext *ctx, int width, int height, int num_frames,
                            int live_slot, int radius_offset, bool uniform) {
   int cx, cy, radius_out;
   int32_t start, section, gap, border;
-  if (!prv_round_geometry(width, height, radius_offset, &cx, &cy, &radius_out,
-                          &start, &section, &gap, &border)) {
+  if (!prv_round_geometry(width, height, radius_offset, num_frames, &cx, &cy,
+                           &radius_out, &start, &section, &gap, &border)) {
     return;
   }
-  int count = RADAR_MAX_FRAMES;
+  int count = prv_clamped_count(num_frames);
   GRect outer = GRect(cx - radius_out, cy - radius_out,
                       2 * radius_out, 2 * radius_out);
   int radius_in = radius_out - 1;
@@ -208,8 +221,7 @@ static void prv_draw_round(GContext *ctx, int width, int height, int num_frames,
     prv_segment_angles(pos, start, section, gap, &a0, &a1);
     GColor fill = GColorLightGray;
     if (!uniform) {
-      fill = prv_fill_for_slot(prv_slot_at_pos(pos, live_slot), live_slot,
-                               num_frames);
+      fill = prv_fill_for_slot(pos, live_slot, num_frames);
     }
     graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_radial(ctx, outer, GOvalScaleModeFitCircle, STRIP_HEIGHT,
@@ -221,17 +233,15 @@ static void prv_draw_round(GContext *ctx, int width, int height, int num_frames,
 }
 
 static void prv_draw_round_indicator(GContext *ctx, int width, int height,
-                                     int live_slot) {
+                                     int num_frames) {
   int cx, cy, radius_out;
   int32_t start, section, gap, border;
-  if (!prv_round_geometry(width, height, s_offset, &cx, &cy, &radius_out,
-                          &start, &section, &gap, &border)) {
+  if (!prv_round_geometry(width, height, s_offset, num_frames, &cx, &cy,
+                          &radius_out, &start, &section, &gap, &border)) {
     return;
   }
-  int32_t units = s_pos +
-      (int32_t)(RADAR_PAST_MAX - 1 - live_slot) * SLIDE_UNIT;
   int32_t center = start -
-      (int32_t)((units * (section + gap) + SLIDE_UNIT / 2) / SLIDE_UNIT) -
+      (int32_t)((s_pos * (section + gap) + SLIDE_UNIT / 2) / SLIDE_UNIT) -
       section / 2;
   int32_t half = section / 2 + border;
   int r = radius_out + 1;
@@ -252,11 +262,11 @@ static void prv_draw(GContext *ctx, int width, int height, int num_frames,
 }
 
 static void prv_draw_indicator(GContext *ctx, int width, int height,
-                               int live_slot) {
+                               int num_frames) {
 #ifdef PBL_ROUND
-  prv_draw_round_indicator(ctx, width, height, live_slot);
+  prv_draw_round_indicator(ctx, width, height, num_frames);
 #else
-  prv_draw_rect_indicator(ctx, width, height, live_slot);
+  prv_draw_rect_indicator(ctx, width, height, num_frames);
 #endif
 }
 
@@ -277,8 +287,9 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
   if (num_frames <= 0 || live_slot < 0 || live_slot >= num_frames) {
     return;
   }
+  s_count = num_frames;
   if (s_state == StripShown && s_target >= 0) {
-    prv_draw_indicator(ctx, bounds.size.w, bounds.size.h, live_slot);
+    prv_draw_indicator(ctx, bounds.size.w, bounds.size.h, num_frames);
   }
   prv_draw(ctx, bounds.size.w, bounds.size.h, num_frames, live_slot, s_offset,
            false);
@@ -433,6 +444,7 @@ void frame_strip_set_layer(Layer *layer) {
     }
     prv_stop_slide();
     s_target = -1;
+    s_count = 0;
     s_state = StripHidden;
     s_offset = STRIP_TRAVEL;
   }
