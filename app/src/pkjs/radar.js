@@ -239,6 +239,34 @@ var PAST_MAX = 12;
 var NOWCAST_MAX = 6;
 var MAX_FRAMES = 18;
 
+var PAST_MIN = 1;
+var PAST_LIMIT = 12;
+var NOWCAST_MIN = 0;
+var NOWCAST_LIMIT = 6;
+
+function clampInt(v, min, max) {
+  var n = parseInt(v, 10);
+  if (isNaN(n)) return null;
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
+}
+
+function setFrameLimits(past, nowcast) {
+  var changed = false;
+  var p = clampInt(past, PAST_MIN, PAST_LIMIT);
+  if (p !== null && p !== PAST_MAX) {
+    PAST_MAX = p;
+    changed = true;
+  }
+  var n = clampInt(nowcast, NOWCAST_MIN, NOWCAST_LIMIT);
+  if (n !== null && n !== NOWCAST_MAX) {
+    NOWCAST_MAX = n;
+    changed = true;
+  }
+  return changed;
+}
+
 // fetch priority order, middle-out starting with live:
 // live, past[-2], nowcast[0], past[-3], nowcast[1], ...
 function priorityOrder(past, nowcast) {
@@ -383,6 +411,11 @@ module.exports = {
   PAST_MAX: PAST_MAX,
   NOWCAST_MAX: NOWCAST_MAX,
   MAX_FRAMES: MAX_FRAMES,
+  PAST_MIN: PAST_MIN,
+  PAST_LIMIT: PAST_LIMIT,
+  NOWCAST_MIN: NOWCAST_MIN,
+  NOWCAST_LIMIT: NOWCAST_LIMIT,
+  setFrameLimits: setFrameLimits,
   priorityOrder: priorityOrder,
   orderFrames: orderFrames,
   slotFor: slotFor,

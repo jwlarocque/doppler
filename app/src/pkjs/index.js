@@ -394,6 +394,19 @@ function storedDither() {
   }
 }
 
+// frame counts from Clay's last saved config page
+function storedFrameLimits() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    var saved = JSON.parse(localStorage.getItem('clay-settings') || '{}');
+    if (saved && (saved.PastFrames !== undefined || saved.NowcastFrames !== undefined)) {
+      radar.setFrameLimits(saved.PastFrames, saved.NowcastFrames);
+    }
+  } catch (e) {
+    console.log('stored frame limits unreadable: ' + (e && e.message));
+  }
+}
+
 // rebuild radar frames without refetching the map
 function reloadRadar(reason) {
   if (!lastFix || !lastScreen) return;
@@ -433,9 +446,14 @@ Pebble.addEventListener('webviewclosed', function (e) {
   if (palette) {
     msg.Palette = String(palette);
   }
+  // frame counts are phone-side only, so they aren't forwarded to the watch
+  var past = settings.PastFrames !== undefined ? unwrapSetting(settings.PastFrames) : undefined;
+  var nowcast = settings.NowcastFrames !== undefined ? unwrapSetting(settings.NowcastFrames) : undefined;
+  var limitsApplied = (past !== undefined || nowcast !== undefined) &&
+    radar.setFrameLimits(past, nowcast);
   // radar dither is phone-side only, so it isn't forwarded to the watch
   var dither = settings.Dither !== undefined ? unwrapSetting(settings.Dither) : null;
-  if (!Object.keys(msg).length && !dither) return;
+  if (!Object.keys(msg).length && !dither && !limitsApplied) return;
   if (Object.keys(msg).length) {
     Pebble.sendAppMessage(msg,
       function () { console.log('config sent'); },
@@ -444,6 +462,8 @@ Pebble.addEventListener('webviewclosed', function (e) {
   var ditherApplied = dither && radar.setDither(dither);
   if (palette && radar.setPalette(palette)) {
     reloadRadar('palette changed');
+  } else if (limitsApplied) {
+    reloadRadar('frame limits changed');
   } else if (ditherApplied && lastScreen && lastScreen.bw) {
     reloadRadar('dither changed');
   }
@@ -517,6 +537,7 @@ Pebble.addEventListener('ready', function () {
   }
   storedPalette();
   storedDither();
+  storedFrameLimits();
   currentFix(function (err, fix) {
     lastFix = fix;
     lastScreen = screen;

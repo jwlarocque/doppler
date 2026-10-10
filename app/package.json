@@ -51,7 +51,9 @@
       "MarkerX",
       "MarkerY",
       "Palette",
-      "Dither"
+      "Dither",
+      "PastFrames",
+      "NowcastFrames"
     ],
     "resources": {
       "media": [
