@@ -34,7 +34,7 @@ def build(ctx):
         ctx.env = ctx.all_envs[platform]
         ctx.set_group(ctx.env.PLATFORM_NAME)
 
-        ctx.env.append_value("CFLAGS", ["-O3"])
+        ctx.env.append_value("CFLAGS", ["-O2"])
         if ctx.env.PLATFORM_NAME in ["aplite"]:
             ctx.env.append_value("CFLAGS", ["-mcpu=cortex-m3", "-mthumb"])
             ctx.env.append_value("LINKFLAGS", ["-mcpu=cortex-m3", "-mthumb"])

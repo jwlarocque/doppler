@@ -35,12 +35,12 @@
 #elif defined(PBL_PLATFORM_DIORITE)
 #define RADAR_ARENA_BYTES 47131
 #elif defined(PBL_PLATFORM_FLINT)
-#define RADAR_ARENA_BYTES 46131
+#define RADAR_ARENA_BYTES 45131
 #elif defined(PBL_PLATFORM_EMERY)
 #define RADAR_ARENA_BYTES 102400
 #define RADAR_ARENA_MALLOC 1
 #elif defined(PBL_PLATFORM_GABBRO)
-#define RADAR_ARENA_BYTES 95549
+#define RADAR_ARENA_BYTES 94549
 #define RADAR_ARENA_MALLOC 1
 #else
 #define RADAR_ARENA_BYTES 7168
@@ -94,7 +94,6 @@ int radar_live_slot(void);
 bool radar_slot_resident(int slot);
 
 void radar_set_layer(Layer *layer);
-void radar_set_strip_layer(Layer *layer);
 // true when live frame is available
 bool radar_is_ready(void);
 // live frame pointer (arena offset 0 before layout move, then actual offset)

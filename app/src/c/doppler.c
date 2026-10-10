@@ -32,6 +32,7 @@ static void prv_play_tick(void *context) {
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
   }
+  frame_strip_refresh_current_frame();
 }
 
 #ifdef PBL_COLOR
@@ -216,6 +217,7 @@ static void prv_frame_step(int delta) {
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
   }
+  frame_strip_refresh_current_frame();
   controls_refresh_play_icon();
 }
 
@@ -242,6 +244,21 @@ static bool prv_is_playing(void) {
   return s_playing;
 }
 
+// layout slot shown on the map, matching prv_map_update
+static int prv_current_frame_slot(void) {
+  if (!radar_has_layout()) {
+    return -1;
+  }
+  if (radar_is_session_done()) {
+    int count = radar_count();
+    if (count <= 0) {
+      return -1;
+    }
+    return s_play_index % count;
+  }
+  return radar_live_slot();
+}
+
 static const struct DopplerControlsCallbacks s_controls_callbacks = {
   .frame_step = prv_frame_step,
   .zoom = prv_try_zoom,
@@ -260,8 +277,8 @@ static void prv_window_load(Window *window) {
   radar_set_layer(s_map_layer);
   s_strip_layer = layer_create(bounds);
   frame_strip_set_layer(s_strip_layer);
+  frame_strip_set_provider(prv_current_frame_slot);
   layer_add_child(window_layer, s_strip_layer);
-  radar_set_strip_layer(s_strip_layer);
   s_ui_layer = layer_create(bounds);
   ui_set_layer(s_ui_layer);
   layer_add_child(window_layer, s_ui_layer);
@@ -274,7 +291,7 @@ static void prv_window_unload(Window *window) {
   controls_deinit();
   map_set_layer(NULL);
   radar_set_layer(NULL);
-  radar_set_strip_layer(NULL);
+  frame_strip_set_provider(NULL);
   frame_strip_set_layer(NULL);
   ui_set_layer(NULL);
   layer_destroy(s_ui_layer);

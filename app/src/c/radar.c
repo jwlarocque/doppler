@@ -31,13 +31,6 @@ static int32_t s_recv_total;
 static int32_t s_recv_received;
 
 static Layer *s_layer;
-static Layer *s_strip_layer;
-
-static void prv_mark_strip_dirty(void) {
-  if (s_strip_layer) {
-    layer_mark_dirty(s_strip_layer);
-  }
-}
 
 static uint32_t prv_read_u32(const uint8_t *p) {
   return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
@@ -250,7 +243,7 @@ bool radar_frame_chunk(const uint8_t *data, uint16_t length, int32_t index) {
   s_resident[slot] = true;
   APP_LOG(APP_LOG_LEVEL_INFO, "radar frame %d resident (of %d)", slot,
           s_num_frames);
-  prv_mark_strip_dirty();
+  frame_strip_refresh_current_frame();
   return true;
 }
 
@@ -269,7 +262,7 @@ void radar_set_terminal_count(int32_t count) {
   if (s_layer) {
     layer_mark_dirty(s_layer);
   }
-  prv_mark_strip_dirty();
+  frame_strip_refresh_current_frame();
 }
 
 int radar_count(void) {
@@ -312,10 +305,6 @@ bool radar_slot_resident(int slot) {
 
 void radar_set_layer(Layer *layer) {
   s_layer = layer;
-}
-
-void radar_set_strip_layer(Layer *layer) {
-  s_strip_layer = layer;
 }
 
 bool radar_is_ready(void) {
