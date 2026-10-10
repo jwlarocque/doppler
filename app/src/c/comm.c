@@ -1,6 +1,7 @@
 #include <pebble.h>
 
 #include "comm.h"
+#include "config.h"
 #include "map.h"
 #include "radar.h"
 #include "ui.h"
@@ -16,6 +17,13 @@
 // current incoming streamed frame slot
 // -1 when idle (or when receiving the live frame)
 static int32_t s_incoming_slot = -1;
+
+// notified when the Clay autoplay setting changes
+static void (*s_autoplay_handler)(bool autoplay) = NULL;
+
+void comm_set_autoplay_handler(void (*handler)(bool autoplay)) {
+  s_autoplay_handler = handler;
+}
 
 static void prv_send_int(uint32_t key, int32_t value) {
   DictionaryIterator *iter = NULL;
@@ -43,6 +51,13 @@ void comm_send_zoom(int32_t zoom) {
 }
 
 static void prv_inbox_received(DictionaryIterator *iter, void *context) {
+  Tuple *autoplay_tuple = dict_find(iter, MESSAGE_KEY_Autoplay);
+  if (autoplay_tuple) {
+    if (config_handle_inbox(iter) && s_autoplay_handler) {
+      s_autoplay_handler(config_get_autoplay());
+    }
+    return;
+  }
   Tuple *length_tuple = dict_find(iter, MESSAGE_KEY_MapLength);
   if (length_tuple) {
     map_begin(length_tuple->value->int32);

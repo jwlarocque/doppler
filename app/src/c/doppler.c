@@ -1,6 +1,7 @@
 #include <pebble.h>
 
 #include "comm.h"
+#include "config.h"
 #include "controls.h"
 #include "frame_strip.h"
 #include "lz4.h"
@@ -14,6 +15,7 @@ static Layer *s_strip_layer;
 static Layer *s_ui_layer;
 static AppTimer *s_play_timer;
 static int s_play_index;
+// overwritten from persisted config in prv_init
 static bool s_playing = true;
 
 // must match ZOOM_DEFAULT in index.js, since zoom is not communicated before
@@ -244,6 +246,19 @@ static bool prv_is_playing(void) {
   return s_playing;
 }
 
+// Clay autoplay setting changed; apply it immediately
+static void prv_autoplay_changed(bool autoplay) {
+  s_playing = autoplay;
+  if (!s_playing && s_play_timer) {
+    app_timer_cancel(s_play_timer);
+    s_play_timer = NULL;
+  }
+  if (s_map_layer) {
+    layer_mark_dirty(s_map_layer);
+  }
+  controls_refresh_play_icon();
+}
+
 // layout slot shown on the map, matching prv_map_update
 static int prv_current_frame_slot(void) {
   if (!radar_has_layout()) {
@@ -303,8 +318,11 @@ static void prv_window_unload(Window *window) {
 }
 
 static void prv_init(void) {
+  config_load();
+  s_playing = config_get_autoplay();
   radar_init();
   comm_init();
+  comm_set_autoplay_handler(prv_autoplay_changed);
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = prv_window_load,

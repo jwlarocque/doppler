@@ -10,6 +10,7 @@
   ],
   "private": false,
   "dependencies": {
+    "@rebble/clay": "^1.1.0",
     "pako": "^3.0.2"
   },
   "pebble": {
@@ -17,6 +18,9 @@
     "uuid": "8386d43d-a449-41f1-8f04-594b38495058",
     "sdkVersion": "3",
     "enableMultiJS": true,
+    "capabilities": [
+      "configurable"
+    ],
     "targetPlatforms": [
       "aplite",
       "basalt",
@@ -30,6 +34,7 @@
       "watchface": false
     },
     "messageKeys": [
+      "Autoplay",
       "MapLength",
       "MapChunk",
       "MapIndex",

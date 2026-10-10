@@ -1,5 +1,16 @@
 var tiles = require('./tiles.js');
 var config = require('./config.js');
+
+var clay = null;
+try {
+  var Clay = require('@rebble/clay');
+  var clayConfig = require('./config.json');
+  clay = new Clay(clayConfig, null, { autoHandleEvents: true });
+} catch (e) {
+  console.log('clay unavailable: ' + (e && e.message));
+}
+void clay;
+
 var map = require('./map.js');
 var radar = require('./radar.js');
 var lz4 = require('./lz4.js');
