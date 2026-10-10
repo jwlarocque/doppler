@@ -4,6 +4,8 @@
 
 #include "radar.h"
 
+#include "frame_strip.h"
+
 #ifdef RADAR_ARENA_MALLOC
 static uint8_t *s_arena;
 #else
@@ -73,10 +75,11 @@ void radar_invalidate(void) {
   s_live_total = 0;
   s_live_received = 0;
   s_live_ready = false;
-  prv_mark_strip_dirty();
+  frame_strip_layout_obsolete();
 }
 
 void radar_live_begin(int32_t total) {
+  frame_strip_layout_obsolete();
   prv_reset_session();
   s_live_total = 0;
   s_live_received = 0;
@@ -193,7 +196,7 @@ bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
   s_recv_slot = -1;
   APP_LOG(APP_LOG_LEVEL_INFO, "radar layout ok n %d live %d heap %d", n, live,
           (int)heap_bytes_free());
-  prv_mark_strip_dirty();
+  frame_strip_layout_ready();
   return true;
 }
 
