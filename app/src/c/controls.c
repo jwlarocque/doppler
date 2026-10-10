@@ -4,26 +4,20 @@
 
 // playback and zoom action bar
 // layer 1 (frame mode):
-//   - UP/DOWN steps back and forth through radar frames
+//   - UP/DOWN steps back and forth through radar frames (hold to repeat)
 //   - SELECT enters layer 2 (zoom mode)
 // layer 2
 //   - UP/DOWN zooms in and out
 //   - SELECT toggles playback
-// 
+//
 // Layer 2 reverts to layer 1 after (2s) delay.
-// A long press in layer 1 "pushes through" to layer 2, temporarily entering
-// layer 2 and performing the action assigned to the same button.
-// Modeled after the stock music app.
 enum ActionBarState {
   ActionBarStateFrame,
   ActionBarStateZoom,
-  ActionBarStateLongPress,
 };
 
 #define ACTION_BAR_TIMEOUT_MS 2000
-
-// short vibe confirmation on push-through
-static const uint32_t FEEDBACK_SEGMENTS[] = { 30 };
+#define FRAME_REPEAT_INTERVAL_MS 200
 
 static ActionBarLayer *s_action_bar;
 static enum ActionBarState s_action_bar_state;
@@ -42,14 +36,6 @@ static struct DopplerControlsCallbacks s_callbacks;
 static void prv_frame_click_config_provider(void *context);
 static void prv_zoom_click_config_provider(void *context);
 static void prv_set_action_bar_state(enum ActionBarState state);
-
-static void prv_feedback(void) {
-  VibePattern pat = {
-    .durations = FEEDBACK_SEGMENTS,
-    .num_segments = sizeof(FEEDBACK_SEGMENTS) / sizeof(FEEDBACK_SEGMENTS[0]),
-  };
-  vibes_enqueue_custom_pattern(pat);
-}
 
 static const GBitmap *prv_select_icon(void) {
   if (s_callbacks.is_playing && !s_callbacks.is_playing()) {
@@ -83,13 +69,8 @@ static void prv_update_ui_state_frame(bool animated) {
   }
 }
 
-static void prv_update_ui_state_zoom(bool animated, bool swap_provider) {
-  // long press push-through keeps the frame provider armed so the
-  // long click end handler still fires on release; only SELECT-entered
-  // zoom swaps the provider. Similar to music's volume/long-press UI.
-  if (swap_provider) {
-    action_bar_layer_set_click_config_provider(s_action_bar, prv_zoom_click_config_provider);
-  }
+static void prv_update_ui_state_zoom(bool animated) {
+  action_bar_layer_set_click_config_provider(s_action_bar, prv_zoom_click_config_provider);
   const GBitmap *select = prv_select_icon();
   if (animated) {
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_UP, s_icon_minus, true);
@@ -106,10 +87,8 @@ static void prv_set_action_bar_state(enum ActionBarState state) {
   s_action_bar_state = state;
   if (state == ActionBarStateFrame) {
     prv_update_ui_state_frame(true);
-  } else if (state == ActionBarStateZoom) {
-    prv_update_ui_state_zoom(true, true);
   } else {
-    prv_update_ui_state_zoom(true, false);
+    prv_update_ui_state_zoom(true);
   }
 }
 
@@ -157,22 +136,6 @@ static void prv_zoom_in_handler(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
-static void prv_zoom_long_start_handler(ClickRecognizerRef recognizer, void *context) {
-  (void)context;
-  int delta = (click_recognizer_get_button_id(recognizer) == BUTTON_ID_UP) ? -1 : 1;
-  if (s_callbacks.zoom) {
-    s_callbacks.zoom(delta);
-  }
-  prv_set_action_bar_state(ActionBarStateLongPress);
-  prv_feedback();
-}
-
-static void prv_zoom_long_end_handler(ClickRecognizerRef recognizer, void *context) {
-  (void)recognizer;
-  (void)context;
-  prv_set_action_bar_state(ActionBarStateFrame);
-}
-
 static void prv_play_pause_handler(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer;
   (void)context;
@@ -182,34 +145,13 @@ static void prv_play_pause_handler(ClickRecognizerRef recognizer, void *context)
   }
 }
 
-static void prv_play_pause_long_start_handler(ClickRecognizerRef recognizer, void *context) {
-  (void)recognizer;
-  (void)context;
-  if (s_callbacks.toggle_play) {
-    s_callbacks.toggle_play();
-  }
-  prv_set_action_bar_state(ActionBarStateLongPress);
-  prv_feedback();
-}
-
-static void prv_play_pause_long_end_handler(ClickRecognizerRef recognizer, void *context) {
-  (void)recognizer;
-  (void)context;
-  prv_set_action_bar_state(ActionBarStateFrame);
-}
-
 static void prv_frame_click_config_provider(void *context) {
   (void)context;
-  window_single_click_subscribe(BUTTON_ID_UP, prv_frame_prev_handler);
-  window_single_click_subscribe(BUTTON_ID_DOWN, prv_frame_next_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, FRAME_REPEAT_INTERVAL_MS,
+                                          prv_frame_prev_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, FRAME_REPEAT_INTERVAL_MS,
+                                          prv_frame_next_handler);
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_enter_zoom_handler);
-  // delay 0 defaults to 500ms
-  window_long_click_subscribe(BUTTON_ID_UP, 0, prv_zoom_long_start_handler,
-                              prv_zoom_long_end_handler);
-  window_long_click_subscribe(BUTTON_ID_DOWN, 0, prv_zoom_long_start_handler,
-                              prv_zoom_long_end_handler);
-  window_long_click_subscribe(BUTTON_ID_SELECT, 0, prv_play_pause_long_start_handler,
-                              prv_play_pause_long_end_handler);
 }
 
 static void prv_zoom_click_config_provider(void *context) {
