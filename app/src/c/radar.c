@@ -275,7 +275,7 @@ int radar_count(void) {
   return s_num_frames;
 }
 
-const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, int32_t *time_out) {
+const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, uint32_t *time_out) {
   if (!s_has_layout || slot < 0 || slot >= s_num_frames || !s_resident[slot]) {
     return NULL;
   }
@@ -283,7 +283,7 @@ const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, int32_t *time_out)
     *len_out = (int32_t)s_len[slot];
   }
   if (time_out) {
-    *time_out = (int32_t)s_time[slot];
+    *time_out = s_time[slot];
   }
   return s_arena + s_offset[slot];
 }

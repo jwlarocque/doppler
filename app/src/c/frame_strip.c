@@ -47,25 +47,21 @@ enum StripState {
 
 static Layer *s_layer;
 static enum StripState s_state = StripHidden;
-static int s_offset = STRIP_TRAVEL;
-static int s_anim_from;
-static int s_anim_to;
 static bool s_exiting;
-static Animation *s_anim;
+static PropertyAnimation *s_anim;
 
 static FrameStripCurrentFrameProvider s_provider;
 static int s_target = -1;
-static int32_t s_pos = 0;
-static int32_t s_slide_from;
-static int32_t s_slide_to;
+static int16_t s_pos = 0;
+static int16_t s_slide_from;
+static int16_t s_slide_to;
 static Animation *s_slide_anim;
-// segment count of the last layout, for use in the exit animation
-static int s_count = 0;
+// cache last layout, for use in the strip exit animation
+static int s_cached_num = 0;
+static int s_cached_live = 0;
+static bool s_cached_resident[RADAR_MAX_FRAMES];
 
 static int prv_clamped_count(int num_frames) {
-  if (num_frames < 1) {
-    num_frames = s_count;
-  }
   if (num_frames < 1) {
     return 1;
   }
@@ -76,7 +72,8 @@ static int prv_clamped_count(int num_frames) {
 }
 
 // strip position is the layout slot
-static GColor prv_fill_for_slot(int slot, int live_slot, int num_frames) {
+static GColor prv_fill_for_slot(int slot, int live_slot, int num_frames,
+                                bool resident) {
   if (slot < 0 || slot >= num_frames) {
 #ifdef PBL_COLOR
     return GColorDarkGray;
@@ -84,7 +81,7 @@ static GColor prv_fill_for_slot(int slot, int live_slot, int num_frames) {
     return GColorBlack;
 #endif
   }
-  if (!radar_slot_resident(slot)) {
+  if (!resident) {
     return GColorLightGray;
   }
   if (slot == live_slot) {
@@ -105,7 +102,7 @@ static GColor prv_fill_for_slot(int slot, int live_slot, int num_frames) {
 }
 
 #ifndef PBL_ROUND
-static bool prv_rect_geometry(int width, int height, int y_offset, int count,
+static bool prv_rect_geometry(int width, int height, int count,
                               int *x0, int *pitch, int *rect_w, int *y0) {
   count = prv_clamped_count(count);
   int w = (width - 2 * STRIP_MARGIN - (count - 1) * STRIP_GAP) / count;
@@ -119,24 +116,23 @@ static bool prv_rect_geometry(int width, int height, int y_offset, int count,
   *x0 = (width - total) / 2;
   *pitch = w + STRIP_GAP;
   *rect_w = w;
-  *y0 = height - STRIP_BOTTOM - STRIP_HEIGHT + y_offset;
+  *y0 = height - STRIP_BOTTOM - STRIP_HEIGHT;
   return true;
 }
 
 static void prv_draw_rect(GContext *ctx, int width, int height, int num_frames,
-                          int live_slot, int y_offset, bool uniform) {
+                          int live_slot, bool use_cache) {
   int x0, pitch, rect_w, y0;
-  if (!prv_rect_geometry(width, height, y_offset, num_frames, &x0, &pitch,
+  if (!prv_rect_geometry(width, height, num_frames, &x0, &pitch,
                          &rect_w, &y0)) {
     return;
   }
   int count = prv_clamped_count(num_frames);
   for (int pos = 0; pos < count; pos++) {
     int x = x0 + pos * pitch;
-    GColor fill = GColorLightGray;
-    if (!uniform) {
-      fill = prv_fill_for_slot(pos, live_slot, num_frames);
-    }
+    bool resident = use_cache ? s_cached_resident[pos]
+                              : radar_slot_resident(pos);
+    GColor fill = prv_fill_for_slot(pos, live_slot, num_frames, resident);
     graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_rect(ctx, GRect(x, y0, rect_w, STRIP_HEIGHT), 0, GCornerNone);
     graphics_context_set_fill_color(ctx, fill);
@@ -148,11 +144,11 @@ static void prv_draw_rect(GContext *ctx, int width, int height, int num_frames,
 static void prv_draw_rect_indicator(GContext *ctx, int width, int height,
                                      int num_frames) {
   int x0, pitch, rect_w, y0;
-  if (!prv_rect_geometry(width, height, s_offset, num_frames, &x0, &pitch,
+  if (!prv_rect_geometry(width, height, num_frames, &x0, &pitch,
                          &rect_w, &y0)) {
     return;
   }
-  int x = x0 + (int)((s_pos * pitch + SLIDE_UNIT / 2) / SLIDE_UNIT);
+  int x = x0 + (s_pos * pitch + SLIDE_UNIT / 2) / SLIDE_UNIT;
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, GRect(x - 1, y0 - 1, rect_w + 2, STRIP_HEIGHT + 2),
                      0, GCornerNone);
@@ -174,13 +170,12 @@ static void prv_segment_angles(int pos, int32_t start, int32_t section,
   *a1_out = a1;
 }
 
-static bool prv_round_geometry(int width, int height, int radius_offset,
-                               int count, int *cx, int *cy, int *radius_out,
-                               int32_t *start, int32_t *section, int32_t *gap,
+static bool prv_round_geometry(int width, int height, int count, int *cx,
+                               int *cy, int *radius_out, int32_t *start,
+                               int32_t *section, int32_t *gap,
                                int32_t *border) {
   count = prv_clamped_count(count);
-  int radius = (width < height ? width : height) / 2 - ROUND_EDGE
-      + radius_offset;
+  int radius = (width < height ? width : height) / 2 - ROUND_EDGE;
   int mid = radius - STRIP_HEIGHT / 2;
   if (mid <= 0) {
     return false;
@@ -203,10 +198,10 @@ static bool prv_round_geometry(int width, int height, int radius_offset,
 }
 
 static void prv_draw_round(GContext *ctx, int width, int height, int num_frames,
-                           int live_slot, int radius_offset, bool uniform) {
+                           int live_slot, bool use_cache) {
   int cx, cy, radius_out;
   int32_t start, section, gap, border;
-  if (!prv_round_geometry(width, height, radius_offset, num_frames, &cx, &cy,
+  if (!prv_round_geometry(width, height, num_frames, &cx, &cy,
                            &radius_out, &start, &section, &gap, &border)) {
     return;
   }
@@ -219,10 +214,9 @@ static void prv_draw_round(GContext *ctx, int width, int height, int num_frames,
   for (int pos = 0; pos < count; pos++) {
     int32_t a0, a1;
     prv_segment_angles(pos, start, section, gap, &a0, &a1);
-    GColor fill = GColorLightGray;
-    if (!uniform) {
-      fill = prv_fill_for_slot(pos, live_slot, num_frames);
-    }
+    bool resident = use_cache ? s_cached_resident[pos]
+                              : radar_slot_resident(pos);
+    GColor fill = prv_fill_for_slot(pos, live_slot, num_frames, resident);
     graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_radial(ctx, outer, GOvalScaleModeFitCircle, STRIP_HEIGHT,
                          a0, a1);
@@ -236,7 +230,7 @@ static void prv_draw_round_indicator(GContext *ctx, int width, int height,
                                      int num_frames) {
   int cx, cy, radius_out;
   int32_t start, section, gap, border;
-  if (!prv_round_geometry(width, height, s_offset, num_frames, &cx, &cy,
+  if (!prv_round_geometry(width, height, num_frames, &cx, &cy,
                           &radius_out, &start, &section, &gap, &border)) {
     return;
   }
@@ -253,11 +247,11 @@ static void prv_draw_round_indicator(GContext *ctx, int width, int height,
 #endif
 
 static void prv_draw(GContext *ctx, int width, int height, int num_frames,
-                     int live_slot, int offset, bool uniform) {
+                     int live_slot, bool use_cache) {
 #ifdef PBL_ROUND
-  prv_draw_round(ctx, width, height, num_frames, live_slot, offset, uniform);
+  prv_draw_round(ctx, width, height, num_frames, live_slot, use_cache);
 #else
-  prv_draw_rect(ctx, width, height, num_frames, live_slot, offset, uniform);
+  prv_draw_rect(ctx, width, height, num_frames, live_slot, use_cache);
 #endif
 }
 
@@ -276,7 +270,11 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
   }
   GRect bounds = layer_get_bounds(layer);
   if (s_state == StripExiting) {
-    prv_draw(ctx, bounds.size.w, bounds.size.h, 0, 0, s_offset, true);
+    if (s_cached_num <= 0) {
+      return;
+    }
+    prv_draw(ctx, bounds.size.w, bounds.size.h, s_cached_num, s_cached_live,
+             true);
     return;
   }
   if (!radar_has_layout()) {
@@ -287,73 +285,86 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
   if (num_frames <= 0 || live_slot < 0 || live_slot >= num_frames) {
     return;
   }
-  s_count = num_frames;
+  s_cached_num = num_frames;
+  s_cached_live = live_slot;
+  for (int i = 0; i < num_frames; i++) {
+    s_cached_resident[i] = radar_slot_resident(i);
+  }
   if (s_state == StripShown && s_target >= 0) {
     prv_draw_indicator(ctx, bounds.size.w, bounds.size.h, num_frames);
   }
-  prv_draw(ctx, bounds.size.w, bounds.size.h, num_frames, live_slot, s_offset,
-           false);
+  prv_draw(ctx, bounds.size.w, bounds.size.h, num_frames, live_slot, false);
 }
 
-static void prv_anim_update(Animation *animation, AnimationProgress progress) {
+static void prv_anim_stopped(Animation *animation, bool finished,
+                             void *context) {
   (void)animation;
-  s_offset = s_anim_from +
-      ((s_anim_to - s_anim_from) * (int32_t)progress) / ANIMATION_NORMALIZED_MAX;
-  frame_strip_mark_dirty();
-}
-
-static void prv_anim_stopped(Animation *animation, bool finished, void *context) {
   (void)context;
   if (finished) {
-    s_offset = s_anim_to;
     s_state = s_exiting ? StripHidden : StripShown;
   }
-  animation_destroy(animation);
-  s_anim = NULL;
+  if (s_state == StripHidden && s_layer) {
+    layer_set_hidden(s_layer, true);
+  }
+  if (s_anim) {
+    property_animation_destroy(s_anim);
+    s_anim = NULL;
+  }
   frame_strip_mark_dirty();
 }
 
 static void prv_start_anim(bool exiting) {
-  int from = s_offset;
+  if (!s_layer) {
+    s_state = exiting ? StripHidden : StripShown;
+    return;
+  }
   if (s_anim) {
-    animation_unschedule(s_anim);
+    animation_unschedule(property_animation_get_animation(s_anim));
   }
-  s_offset = from;
   s_exiting = exiting;
-  s_anim_from = from;
-  s_anim_to = exiting ? STRIP_TRAVEL : 0;
   s_state = exiting ? StripExiting : StripEntering;
-  if (from == s_anim_to) {
+  if (!exiting) {
+    layer_set_hidden(s_layer, false);
+  }
+  GRect frame = layer_get_frame(s_layer);
+  GRect to = frame;
+  to.origin.y = exiting ? STRIP_TRAVEL : 0;
+  if (frame.origin.y == to.origin.y) {
     s_state = exiting ? StripHidden : StripShown;
+    if (exiting) {
+      layer_set_hidden(s_layer, true);
+    }
     frame_strip_mark_dirty();
     return;
   }
-  Animation *animation = animation_create();
-  if (!animation) {
-    s_offset = s_anim_to;
+  PropertyAnimation *prop =
+      property_animation_create_layer_frame(s_layer, NULL, &to);
+  if (!prop) {
+    layer_set_frame(s_layer, to);
     s_state = exiting ? StripHidden : StripShown;
+    if (exiting) {
+      layer_set_hidden(s_layer, true);
+    }
     frame_strip_mark_dirty();
     return;
   }
-  static const AnimationImplementation impl = {
-    .setup = NULL,
-    .update = prv_anim_update,
-    .teardown = NULL,
-  };
-  animation_set_duration(animation, exiting ? STRIP_EXIT_MS : STRIP_ENTER_MS);
-  animation_set_curve(animation,
+  Animation *inner = property_animation_get_animation(prop);
+  animation_set_duration(inner, exiting ? STRIP_EXIT_MS : STRIP_ENTER_MS);
+  animation_set_curve(inner,
                       exiting ? AnimationCurveEaseIn : AnimationCurveEaseOut);
-  animation_set_implementation(animation, &impl);
-  animation_set_handlers(animation,
+  animation_set_handlers(inner,
                          (AnimationHandlers){ .started = NULL,
                                               .stopped = prv_anim_stopped },
                          NULL);
-  s_anim = animation;
-  if (!animation_schedule(animation)) {
-    animation_destroy(animation);
+  s_anim = prop;
+  if (!animation_schedule(inner)) {
+    property_animation_destroy(prop);
     s_anim = NULL;
-    s_offset = s_anim_to;
+    layer_set_frame(s_layer, to);
     s_state = exiting ? StripHidden : StripShown;
+    if (exiting) {
+      layer_set_hidden(s_layer, true);
+    }
     frame_strip_mark_dirty();
   }
 }
@@ -376,8 +387,8 @@ static AnimationProgress prv_ease_out_back(AnimationProgress progress) {
 
 static void prv_slide_update(Animation *animation, AnimationProgress progress) {
   (void)animation;
-  s_pos = s_slide_from + ((s_slide_to - s_slide_from) * (int32_t)progress) /
-      ANIMATION_NORMALIZED_MAX;
+  s_pos = s_slide_from + (int16_t)(((int32_t)(s_slide_to - s_slide_from) *
+      (int32_t)progress) / ANIMATION_NORMALIZED_MAX);
   frame_strip_mark_dirty();
 }
 
@@ -392,7 +403,7 @@ static void prv_slide_stopped(Animation *animation, bool finished,
   frame_strip_mark_dirty();
 }
 
-static void prv_start_slide(int32_t from, int32_t to) {
+static void prv_start_slide(int16_t from, int16_t to) {
   if (s_slide_anim) {
     animation_unschedule(s_slide_anim);
   }
@@ -435,19 +446,24 @@ static void prv_stop_slide(void) {
 }
 
 void frame_strip_set_layer(Layer *layer) {
-  s_layer = layer;
-  if (s_layer) {
-    layer_set_update_proc(s_layer, prv_frame_strip_update);
-  } else {
+  if (!layer) {
     if (s_anim) {
-      animation_unschedule(s_anim);
+      animation_unschedule(property_animation_get_animation(s_anim));
     }
     prv_stop_slide();
+    s_layer = NULL;
     s_target = -1;
-    s_count = 0;
+    s_cached_num = 0;
+    s_cached_live = 0;
     s_state = StripHidden;
-    s_offset = STRIP_TRAVEL;
+    return;
   }
+  s_layer = layer;
+  layer_set_update_proc(s_layer, prv_frame_strip_update);
+  GRect frame = layer_get_frame(s_layer);
+  frame.origin.y = STRIP_TRAVEL;
+  layer_set_frame(s_layer, frame);
+  layer_set_hidden(s_layer, true);
 }
 
 void frame_strip_set_provider(FrameStripCurrentFrameProvider provider) {
@@ -468,15 +484,15 @@ void frame_strip_refresh_current_frame(void) {
   } else if (s_target < 0) {
     prv_stop_slide();
     s_target = target;
-    s_pos = (int32_t)target * SLIDE_UNIT;
+    s_pos = (int16_t)(target * SLIDE_UNIT);
   } else if (target != s_target) {
     bool adjacent = (target == s_target + 1) || (target == s_target - 1);
     s_target = target;
     if (adjacent) {
-      prv_start_slide(s_pos, (int32_t)target * SLIDE_UNIT);
+      prv_start_slide(s_pos, (int16_t)(target * SLIDE_UNIT));
     } else {
       prv_stop_slide();
-      s_pos = (int32_t)target * SLIDE_UNIT;
+      s_pos = (int16_t)(target * SLIDE_UNIT);
     }
   }
   frame_strip_mark_dirty();

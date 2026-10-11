@@ -86,7 +86,7 @@ bool radar_is_session_done(void);
 void radar_set_terminal_count(int32_t count);
 
 int radar_count(void);
-const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, int32_t *time_out);
+const uint8_t *radar_frame_at(int32_t slot, int32_t *len_out, uint32_t *time_out);
 
 // expose layout slot count, live slot index, and slot residency
 int radar_num_frames(void);
