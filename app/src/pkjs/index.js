@@ -20,7 +20,7 @@ var tilecache = require('./tilecache.js');
 
 // must match doppler.c (ZOOM_MIN/MAX/DEFAULT)
 var ZOOM_MIN = 3;
-var ZOOM_MAX = 7;
+var ZOOM_MAX = 8;
 var ZOOM_DEFAULT = 6;
 
 var activeSession = null;

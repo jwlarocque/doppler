@@ -21,7 +21,7 @@ static bool s_playing = true;
 // must match ZOOM_DEFAULT in index.js, since zoom is not communicated before
 // initial load
 #define ZOOM_MIN 3
-#define ZOOM_MAX 7
+#define ZOOM_MAX 8
 #define ZOOM_DEFAULT 6
 static int s_zoom = ZOOM_DEFAULT;
 

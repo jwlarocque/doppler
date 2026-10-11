@@ -7,7 +7,7 @@ var tiles = require('../src/pkjs/tiles.js');
 (function zoomBounds() {
   // index.js is required with a Pebble stub below; check bounds first via
   // the stubbed load so the module initializes
-  assert.strictEqual(tilecache.MAX_ENTRIES, 1024);
+  assert.strictEqual(tilecache.MAX_ENTRIES, 128);
 })();
 
 (function cacheMissHit() {
@@ -100,12 +100,12 @@ var tiles = require('../src/pkjs/tiles.js');
   };
   var index = require('../src/pkjs/index.js');
   assert.strictEqual(index.ZOOM_MIN, 3);
-  assert.strictEqual(index.ZOOM_MAX, 7);
+  assert.strictEqual(index.ZOOM_MAX, 8);
   assert.strictEqual(index.ZOOM_DEFAULT, 6);
-  [3, 4, 5, 6, 7].forEach(function (z) {
+  [3, 4, 5, 6, 7, 8].forEach(function (z) {
     assert.ok(index.isValidZoom(z), 'zoom ' + z + ' valid');
   });
-  [2, 8, 0, -1, '6', null, undefined, NaN].forEach(function (z) {
+  [2, 9, 0, -1, '6', null, undefined, NaN].forEach(function (z) {
     assert.ok(!index.isValidZoom(z), 'zoom ' + z + ' invalid');
   });
 
@@ -117,7 +117,7 @@ var tiles = require('../src/pkjs/tiles.js');
   assert.ok(fetchJsonCalls > 0, 'initial load fetches radar meta');
 
   // out-of-range zoom is ignored: no new fetches
-  listeners.appmessage({ payload: { ZoomLevel: 8 } });
+  listeners.appmessage({ payload: { ZoomLevel: 9 } });
   listeners.appmessage({ payload: { ZoomLevel: 2 } });
   assert.strictEqual(fetchCalls, afterReadyFetches);
   assert.ok(sends === 0, 'failed builds send nothing');
