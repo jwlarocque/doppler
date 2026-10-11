@@ -1,4 +1,5 @@
 #include <pebble.h>
+#include <string.h>
 
 #include "frame_strip.h"
 #include "radar.h"
@@ -26,10 +27,25 @@
   #endif
 #endif
 
-#define STRIP_TRAVEL (STRIP_HEIGHT + STRIP_BOTTOM)
+#define STRIP_TRAVEL (STRIP_HEIGHT + STRIP_BOTTOM + TIME_GAP + TIME_HEIGHT)
 #define STRIP_EXIT_MS 200
 #define STRIP_ENTER_MS 250
 #define STRIP_SLIDE_MS 100
+
+#if PBL_DISPLAY_WIDTH >= 200
+  #define TIME_HEIGHT 30
+  #define TIME_FONT FONT_KEY_LECO_26_BOLD_NUMBERS_AM_PM
+#else
+  #define TIME_HEIGHT 24
+  #define TIME_FONT FONT_KEY_LECO_20_BOLD_NUMBERS
+#endif
+
+#if PBL_ROUND
+  #define TIME_GAP 4
+#else
+  #define TIME_GAP 2
+#endif
+#define TIME_BUF_LEN 8
 
 // indicator position in 256ths of a segment
 #define SLIDE_UNIT 256
@@ -60,6 +76,9 @@ static Animation *s_slide_anim;
 static int s_cached_num = 0;
 static int s_cached_live = 0;
 static bool s_cached_resident[RADAR_MAX_FRAMES];
+static GFont s_time_font = NULL;
+static char s_cached_text[TIME_BUF_LEN];
+static bool s_cached_time_valid = false;
 
 static int prv_clamped_count(int num_frames) {
   if (num_frames < 1) {
@@ -264,6 +283,43 @@ static void prv_draw_indicator(GContext *ctx, int width, int height,
 #endif
 }
 
+static bool prv_format_slot_time(int slot, char *buf, size_t len) {
+  uint32_t raw_time;
+  if (!radar_frame_at(slot, NULL, &raw_time)) {
+    return false;
+  }
+  time_t stamp = (time_t)raw_time;
+  struct tm *tm = localtime(&stamp);
+  if (!tm) {
+    return false;
+  }
+  const char *fmt = clock_is_24h_style() ? "%H:%M" : "%I:%M";
+  return strftime(buf, len, fmt, tm) != 0;
+}
+
+static void prv_draw_time(GContext *ctx, int width, int height,
+                           const char *text) {
+  if (!s_time_font || !text || !text[0]) {
+    return;
+  }
+#ifdef PBL_ROUND
+  int min_dim = width < height ? width : height;
+  int strip_top = height / 2 + (min_dim / 2 - ROUND_EDGE) - STRIP_HEIGHT;
+#else
+  int strip_top = height - STRIP_BOTTOM - STRIP_HEIGHT;
+#endif
+  GRect box = GRect(0, strip_top - TIME_GAP - TIME_HEIGHT, width, TIME_HEIGHT);
+  GRect shadow = box;
+  shadow.origin.x += 2;
+  shadow.origin.y += 2;
+  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_draw_text(ctx, text, s_time_font, shadow, GTextOverflowModeFill,
+                     GTextAlignmentCenter, NULL);
+  graphics_context_set_text_color(ctx, GColorBlack);
+  graphics_draw_text(ctx, text, s_time_font, box, GTextOverflowModeFill,
+                     GTextAlignmentCenter, NULL);
+}
+
 static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
   if (s_state == StripHidden) {
     return;
@@ -275,6 +331,9 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
     }
     prv_draw(ctx, bounds.size.w, bounds.size.h, s_cached_num, s_cached_live,
              true);
+    if (s_cached_time_valid) {
+      prv_draw_time(ctx, bounds.size.w, bounds.size.h, s_cached_text);
+    }
     return;
   }
   if (!radar_has_layout()) {
@@ -294,6 +353,19 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
     prv_draw_indicator(ctx, bounds.size.w, bounds.size.h, num_frames);
   }
   prv_draw(ctx, bounds.size.w, bounds.size.h, num_frames, live_slot, false);
+  if (s_target >= 0) {
+    char text[TIME_BUF_LEN];
+    if (prv_format_slot_time(s_target, text, sizeof(text))) {
+      strncpy(s_cached_text, text, sizeof(s_cached_text));
+      s_cached_text[sizeof(s_cached_text) - 1] = '\0';
+      s_cached_time_valid = true;
+      prv_draw_time(ctx, bounds.size.w, bounds.size.h, text);
+    } else {
+      s_cached_time_valid = false;
+    }
+  } else {
+    s_cached_time_valid = false;
+  }
 }
 
 static void prv_anim_stopped(Animation *animation, bool finished,
@@ -455,10 +527,13 @@ void frame_strip_set_layer(Layer *layer) {
     s_target = -1;
     s_cached_num = 0;
     s_cached_live = 0;
+    s_cached_time_valid = false;
+    s_time_font = NULL;
     s_state = StripHidden;
     return;
   }
   s_layer = layer;
+  s_time_font = fonts_get_system_font(TIME_FONT);
   layer_set_update_proc(s_layer, prv_frame_strip_update);
   GRect frame = layer_get_frame(s_layer);
   frame.origin.y = STRIP_TRAVEL;
