@@ -4,6 +4,7 @@
 #include "config.h"
 #include "map.h"
 #include "radar.h"
+#include "status_message.h"
 #include "ui.h"
 
 #define OUTBOX_SIZE 128
@@ -61,6 +62,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *length_tuple = dict_find(iter, MESSAGE_KEY_MapLength);
   if (length_tuple) {
     map_begin(length_tuple->value->int32);
+    status_message_refresh();
     return;
   }
   Tuple *chunk_tuple = dict_find(iter, MESSAGE_KEY_MapChunk);
@@ -73,6 +75,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *done_tuple = dict_find(iter, MESSAGE_KEY_MapDone);
   if (done_tuple) {
     map_complete(done_tuple->value->int32);
+    status_message_refresh();
     return;
   }
   Tuple *marker_x_tuple = dict_find(iter, MESSAGE_KEY_MarkerX);
@@ -85,6 +88,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *layout_tuple = dict_find(iter, MESSAGE_KEY_RadarLayout);
   if (layout_tuple) {
     bool ok = radar_apply_layout(layout_tuple->value->data, layout_tuple->length);
+    status_message_refresh();
     if (ok) {
       comm_send_ack(RADAR_ACK_LAYOUT);
     } else {
@@ -107,6 +111,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
       s_incoming_slot = -1;
       radar_live_begin(radar_length_tuple->value->int32);
     }
+    status_message_refresh();
     return;
   }
   Tuple *radar_chunk_tuple = dict_find(iter, MESSAGE_KEY_RadarChunk);
@@ -133,6 +138,7 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
     } else {
       radar_live_complete(radar_done_tuple->value->int32);
     }
+    status_message_refresh();
   }
 }
 

@@ -7,10 +7,14 @@
 #include "lz4.h"
 #include "map.h"
 #include "radar.h"
+#include "status_message.h"
 #include "ui.h"
 
 static Window *s_window;
 static Layer *s_map_layer;
+#if !defined(PBL_PLATFORM_APLITE) && !defined(PBL_PLATFORM_BASALT) && !defined(PBL_PLATFORM_CHALK)
+static Layer *s_status_layer;
+#endif
 static Layer *s_strip_layer;
 static Layer *s_ui_layer;
 static AppTimer *s_play_timer;
@@ -62,6 +66,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     // clear stale data
     graphics_context_set_fill_color(ctx, GColorWhite);
     graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
+    status_message_draw(layer, ctx);
     return;
   }
   GBitmap *framebuffer = graphics_capture_frame_buffer(ctx);
@@ -171,6 +176,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   }
 #endif
   graphics_release_frame_buffer(ctx, framebuffer);
+  status_message_draw(layer, ctx);
 }
 
 static void prv_stop_playback(void) {
@@ -205,6 +211,7 @@ static void prv_try_zoom(int delta) {
   }
   comm_send_zoom(s_zoom);
   controls_refresh_play_icon();
+  status_message_refresh();
 }
 
 static void prv_frame_step(int delta) {
@@ -269,6 +276,7 @@ static void prv_config_changed(uint32_t changed) {
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
   }
+  status_message_refresh();
 }
 
 // layout slot shown on the map, matching prv_map_update
@@ -302,6 +310,13 @@ static void prv_window_load(Window *window) {
   layer_add_child(window_layer, s_map_layer);
   map_set_layer(s_map_layer);
   radar_set_layer(s_map_layer);
+#if defined(PBL_PLATFORM_APLITE) || defined(PBL_PLATFORM_BASALT) || defined(PBL_PLATFORM_CHALK)
+  status_message_set_layer(s_map_layer);
+#else
+  s_status_layer = layer_create(bounds);
+  status_message_set_layer(s_status_layer);
+  layer_add_child(window_layer, s_status_layer);
+#endif
   s_strip_layer = layer_create(bounds);
   frame_strip_set_layer(s_strip_layer);
   frame_strip_set_provider(prv_current_frame_slot);
@@ -320,11 +335,16 @@ static void prv_window_unload(Window *window) {
   radar_set_layer(NULL);
   frame_strip_set_provider(NULL);
   frame_strip_set_layer(NULL);
+  status_message_set_layer(NULL);
   ui_set_layer(NULL);
   layer_destroy(s_ui_layer);
   s_ui_layer = NULL;
   layer_destroy(s_strip_layer);
   s_strip_layer = NULL;
+#if !defined(PBL_PLATFORM_APLITE) && !defined(PBL_PLATFORM_BASALT) && !defined(PBL_PLATFORM_CHALK)
+  layer_destroy(s_status_layer);
+  s_status_layer = NULL;
+#endif
   layer_destroy(s_map_layer);
   s_map_layer = NULL;
 }

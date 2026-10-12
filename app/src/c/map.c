@@ -21,7 +21,8 @@ void map_begin(int32_t total) {
   }
   s_raw = malloc(MAP_RAW_BYTES);
   if (!s_raw) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "map malloc failed, length %d", (int)total);
+    APP_LOG(APP_LOG_LEVEL_ERROR, "map malloc failed, length %d free %d",
+            (int)total, (int)heap_bytes_free());
     return;
   }
   memset(s_raw, 0, MAP_RAW_BYTES);
