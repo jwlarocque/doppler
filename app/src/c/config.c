@@ -5,9 +5,21 @@
 
 #define PERSIST_KEY_AUTOPLAY 1
 #define PERSIST_KEY_PALETTE 2
+#define PERSIST_KEY_RADAR_INTERVAL 3
 
 static bool s_autoplay = AUTOPLAY_DEFAULT;
 static Palette s_palette = PALETTE_DEFAULT;
+static int s_radar_interval = RADAR_INTERVAL_DEFAULT;
+
+static int prv_clamp_radar_interval(int value) {
+  if (value < RADAR_INTERVAL_MIN) {
+    return RADAR_INTERVAL_MIN;
+  }
+  if (value > RADAR_INTERVAL_MAX) {
+    return RADAR_INTERVAL_MAX;
+  }
+  return value;
+}
 
 void config_load(void) {
   if (persist_exists(PERSIST_KEY_AUTOPLAY)) {
@@ -20,6 +32,12 @@ void config_load(void) {
     s_palette = (palette == PALETTE_NEXRAD) ? PALETTE_NEXRAD : PALETTE_DARKSKY;
   } else {
     s_palette = PALETTE_DEFAULT;
+  }
+  if (persist_exists(PERSIST_KEY_RADAR_INTERVAL)) {
+    s_radar_interval =
+        prv_clamp_radar_interval((int)persist_read_int(PERSIST_KEY_RADAR_INTERVAL));
+  } else {
+    s_radar_interval = RADAR_INTERVAL_DEFAULT;
   }
 }
 
@@ -67,6 +85,15 @@ uint32_t config_handle_inbox(DictionaryIterator *iter) {
       changed |= CONFIG_CHANGED_PALETTE;
     }
   }
+  Tuple *interval_tuple = dict_find(iter, MESSAGE_KEY_RadarInterval);
+  if (interval_tuple) {
+    int interval = prv_clamp_radar_interval((int)interval_tuple->value->int32);
+    if (interval != s_radar_interval) {
+      s_radar_interval = interval;
+      persist_write_int(PERSIST_KEY_RADAR_INTERVAL, s_radar_interval);
+      changed |= CONFIG_CHANGED_RADAR_INTERVAL;
+    }
+  }
   return changed;
 }
 
@@ -76,4 +103,8 @@ bool config_get_autoplay(void) {
 
 Palette config_get_palette(void) {
   return s_palette;
+}
+
+int config_get_radar_interval(void) {
+  return s_radar_interval;
 }

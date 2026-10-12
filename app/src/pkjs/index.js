@@ -471,6 +471,16 @@ Pebble.addEventListener('webviewclosed', function (e) {
   if (palette) {
     msg.Palette = String(palette);
   }
+  var interval = settings.RadarInterval !== undefined ?
+    unwrapSetting(settings.RadarInterval) : undefined;
+  if (interval !== undefined && interval !== null) {
+    var parsedInterval = parseInt(interval, 10);
+    if (!isNaN(parsedInterval)) {
+      if (parsedInterval < 200) parsedInterval = 200;
+      if (parsedInterval > 1000) parsedInterval = 1000;
+      msg.RadarInterval = parsedInterval;
+    }
+  }
   // frame counts are phone-side only, so they aren't forwarded to the watch
   var past = settings.PastFrames !== undefined ? unwrapSetting(settings.PastFrames) : undefined;
   var nowcast = settings.NowcastFrames !== undefined ? unwrapSetting(settings.NowcastFrames) : undefined;

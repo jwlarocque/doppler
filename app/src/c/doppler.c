@@ -30,12 +30,11 @@ static bool s_playing = true;
 #define ZOOM_DEFAULT 6
 static int s_zoom = ZOOM_DEFAULT;
 
-#define RADAR_PLAY_MS 500
-
 static void prv_play_tick(void *context) {
   s_play_index++;
   // DOPPLER_LOG(APP_LOG_LEVEL_DEBUG, "radar tick %d", s_play_index);
-  s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
+  s_play_timer = app_timer_register((uint32_t)config_get_radar_interval(),
+                                    prv_play_tick, NULL);
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
   }
@@ -86,7 +85,8 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     radar = radar_frame_at(slot, &radar_len, NULL);
     if (s_playing && !s_play_timer) {
       DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar playback start, frames %d", play_count);
-      s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
+      s_play_timer = app_timer_register((uint32_t)config_get_radar_interval(),
+                                        prv_play_tick, NULL);
     }
   } else {
     if (radar_is_ready()) {
@@ -254,7 +254,8 @@ static void prv_toggle_play(void) {
   } else {
     s_playing = true;
     if (!s_play_timer && radar_is_ready()) {
-      s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
+      s_play_timer = app_timer_register((uint32_t)config_get_radar_interval(),
+                                        prv_play_tick, NULL);
     }
   }
   if (s_map_layer) {
@@ -282,6 +283,15 @@ static void prv_config_changed(uint32_t changed) {
   if (changed & CONFIG_CHANGED_PALETTE) {
     radar_invalidate();
     DOPPLER_LOG(APP_LOG_LEVEL_INFO, "palette changed to %d", (int)config_get_palette());
+  }
+  if (changed & CONFIG_CHANGED_RADAR_INTERVAL) {
+    if (s_playing && s_play_timer) {
+      app_timer_cancel(s_play_timer);
+      s_play_timer =
+          app_timer_register((uint32_t)config_get_radar_interval(), prv_play_tick, NULL);
+    }
+    DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar interval changed to %d",
+                config_get_radar_interval());
   }
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);

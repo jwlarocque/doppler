@@ -55,7 +55,8 @@ void comm_send_zoom(int32_t zoom) {
 }
 
 static void prv_inbox_received(DictionaryIterator *iter, void *context) {
-  if (dict_find(iter, MESSAGE_KEY_Autoplay) || dict_find(iter, MESSAGE_KEY_Palette)) {
+  if (dict_find(iter, MESSAGE_KEY_Autoplay) || dict_find(iter, MESSAGE_KEY_Palette) ||
+      dict_find(iter, MESSAGE_KEY_RadarInterval)) {
     uint32_t changed = config_handle_inbox(iter);
     if (changed != CONFIG_CHANGED_NONE && s_config_handler) {
       s_config_handler(changed);

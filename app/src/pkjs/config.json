@@ -13,6 +13,15 @@
         "defaultValue": true
       },
       {
+        "type": "slider",
+        "messageKey": "RadarInterval",
+        "label": "Radar playback interval (ms)",
+        "defaultValue": 500,
+        "min": 200,
+        "max": 1000,
+        "step": 100
+      },
+      {
         "type": "select",
         "messageKey": "Palette",
         "label": "Radar color palette",

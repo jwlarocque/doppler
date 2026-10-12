@@ -35,6 +35,7 @@
     },
     "messageKeys": [
       "Autoplay",
+      "RadarInterval",
       "MapLength",
       "MapChunk",
       "MapIndex",
