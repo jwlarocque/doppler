@@ -15,8 +15,8 @@ static Window *s_window;
 static Layer *s_map_layer;
 #if !defined(DOPPLER_LOW_MEMORY)
 static Layer *s_status_layer;
-#endif
 static Layer *s_strip_layer;
+#endif
 static Layer *s_ui_layer;
 static AppTimer *s_play_timer;
 static int s_play_index;
@@ -68,6 +68,9 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     graphics_context_set_fill_color(ctx, GColorWhite);
     graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
     status_message_draw(layer, ctx);
+#ifdef DOPPLER_LOW_MEMORY
+    frame_strip_draw(layer, ctx);
+#endif
     return;
   }
   GBitmap *framebuffer = graphics_capture_frame_buffer(ctx);
@@ -181,6 +184,9 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
 #endif
   graphics_release_frame_buffer(ctx, framebuffer);
   status_message_draw(layer, ctx);
+#ifdef DOPPLER_LOW_MEMORY
+  frame_strip_draw(layer, ctx);
+#endif
 }
 
 static void prv_stop_playback(void) {
@@ -321,10 +327,14 @@ static void prv_window_load(Window *window) {
   status_message_set_layer(s_status_layer);
   layer_add_child(window_layer, s_status_layer);
 #endif
+#if defined(DOPPLER_LOW_MEMORY)
+  frame_strip_set_layer(s_map_layer);
+#else
   s_strip_layer = layer_create(bounds);
   frame_strip_set_layer(s_strip_layer);
-  frame_strip_set_provider(prv_current_frame_slot);
   layer_add_child(window_layer, s_strip_layer);
+#endif
+  frame_strip_set_provider(prv_current_frame_slot);
   s_ui_layer = layer_create(bounds);
   ui_set_layer(s_ui_layer);
   layer_add_child(window_layer, s_ui_layer);
@@ -343,9 +353,9 @@ static void prv_window_unload(Window *window) {
   ui_set_layer(NULL);
   layer_destroy(s_ui_layer);
   s_ui_layer = NULL;
+#if !defined(DOPPLER_LOW_MEMORY)
   layer_destroy(s_strip_layer);
   s_strip_layer = NULL;
-#if !defined(DOPPLER_LOW_MEMORY)
   layer_destroy(s_status_layer);
   s_status_layer = NULL;
 #endif

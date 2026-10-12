@@ -1,7 +1,7 @@
 var TILE_SIZE = 256;
 
 var SCREENS = {
-  // aplite uses small chunks to save memory.
+  // must fit in inbox with overhead - see INBOX_SIZE in comm.c
   aplite: { w: 144, h: 168, bw: true, round: false, chunk: 250 },
   basalt: { w: 144, h: 168, bw: false, round: false, chunk: 1500 },
   chalk: { w: 180, h: 180, bw: false, round: true, chunk: 1500 },

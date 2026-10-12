@@ -10,7 +10,9 @@
 
 #define OUTBOX_SIZE 128
 
-#ifdef DOPPLER_LOW_MEMORY
+// Must hold the largest possible incoming message
+// (see chunk sizes in pkjs/tiles.js, plus overhead)
+#if defined(PBL_PLATFORM_APLITE)
 #define INBOX_SIZE 512
 #else
 #define INBOX_SIZE 2048

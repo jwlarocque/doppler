@@ -469,9 +469,6 @@ static void prv_start_anim(bool exiting) {
 #else
 static void prv_start_anim(bool exiting) {
   s_state = exiting ? StripHidden : StripShown;
-  if (s_layer) {
-    layer_set_hidden(s_layer, exiting);
-  }
   frame_strip_mark_dirty();
 }
 #endif
@@ -580,13 +577,13 @@ void frame_strip_set_layer(Layer *layer) {
 #ifndef DOPPLER_NO_FRAME_TIME
   s_time_font = fonts_get_system_font(TIME_FONT);
 #endif
-  layer_set_update_proc(s_layer, prv_frame_strip_update);
 #ifndef DOPPLER_LOW_MEMORY
+  layer_set_update_proc(s_layer, prv_frame_strip_update);
   GRect frame = layer_get_frame(s_layer);
   frame.origin.y = STRIP_TRAVEL;
   layer_set_frame(s_layer, frame);
-#endif
   layer_set_hidden(s_layer, true);
+#endif
 }
 
 void frame_strip_set_provider(FrameStripCurrentFrameProvider provider) {
@@ -597,6 +594,15 @@ void frame_strip_mark_dirty(void) {
   if (s_layer) {
     layer_mark_dirty(s_layer);
   }
+}
+
+void frame_strip_draw(Layer *layer, GContext *ctx) {
+#ifndef DOPPLER_LOW_MEMORY
+  (void)layer;
+  (void)ctx;
+#else
+  prv_frame_strip_update(layer, ctx);
+#endif
 }
 
 void frame_strip_refresh_current_frame(void) {
