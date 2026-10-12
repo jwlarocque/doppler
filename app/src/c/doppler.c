@@ -101,11 +101,12 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
   // framebuffer (note: compressed data is 4bpp, so double the offset and
   // length of matches)
   // then copy map "underneath", treating 0x00 as transparent
-  // chalk's circular framebuffer needs a special variant that skips the
-  // corners
+  // only round platforms have circular framebuffers, so pick the
+  // decompressor at compile time
   bool radar_ok = false;
-  bool circular = (gbitmap_get_format(framebuffer) == GBitmapFormat8BitCircular);
-  if (radar && circular) {
+#ifdef PBL_ROUND
+  // circular variant skips the corners
+  if (radar) {
     int got = lz4_decompress_expand_to_circular(
         radar, radar_len, framebuffer, RADAR_STRIDE,
         MAP_HEIGHT, prv_palette_table());
@@ -114,7 +115,8 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
       DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar circular expand failed");
     }
   }
-  if (radar && !circular) {
+#else
+  if (radar) {
     GBitmapDataRowInfo row0 = gbitmap_get_data_row_info(framebuffer, 0);
     GBitmapDataRowInfo row1 = gbitmap_get_data_row_info(framebuffer, 1);
     int pitch = (int)(row1.data - row0.data);
@@ -128,6 +130,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
       DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar expand failed");
     }
   }
+#endif
   const uint8_t shades[4] = {
     GColorBlack.argb, GColorDarkGray.argb, GColorLightGray.argb, GColorWhite.argb
   };

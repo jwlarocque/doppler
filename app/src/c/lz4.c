@@ -54,6 +54,7 @@ int lz4_decompress(const uint8_t *src, int src_length, uint8_t *dst, int dst_cap
   return (int)(d - dst);
 }
 
+#ifndef PBL_COLOR
 int lz4_decompress_to_rows(const uint8_t *src, int src_length, uint8_t *dst_base,
                            int dst_pitch, int stride, int rows) {
   const int capacity = stride * rows;
@@ -166,7 +167,9 @@ int lz4_decompress_to_rows(const uint8_t *src, int src_length, uint8_t *dst_base
   }
   return pos;
 }
+#endif
 
+#if defined(PBL_COLOR) && !defined(PBL_ROUND)
 int lz4_decompress_expand_to_rows(const uint8_t *src, int src_length,
                                   uint8_t *dst_base, int dst_pitch, int stride,
                                   int rows, const uint8_t *palette) {
@@ -276,7 +279,9 @@ int lz4_decompress_expand_to_rows(const uint8_t *src, int src_length,
   }
   return pos * 2;
 }
+#endif
 
+#ifdef PBL_ROUND
 // distance from col to the next visibility transition in a circular
 // framebuffer row (always at least 1)
 static int prv_visible_run(const GBitmapDataRowInfo *info, int col,
@@ -425,3 +430,4 @@ int lz4_decompress_expand_to_circular(const uint8_t *src, int src_length,
   }
   return pos * 2;
 }
+#endif
