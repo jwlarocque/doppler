@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "frame_strip.h"
+#include "platform.h"
 #include "radar.h"
 
 #if PBL_DISPLAY_WIDTH >= 200
@@ -27,32 +28,38 @@
   #endif
 #endif
 
+#ifndef DOPPLER_NO_FRAME_TIME
+  #if PBL_DISPLAY_WIDTH >= 200
+    #define TIME_HEIGHT 30
+    #define TIME_FONT FONT_KEY_LECO_26_BOLD_NUMBERS_AM_PM
+  #else
+    #define TIME_HEIGHT 24
+    #define TIME_FONT FONT_KEY_LECO_20_BOLD_NUMBERS
+  #endif
+
+  #if PBL_ROUND
+    #define TIME_GAP 4
+  #else
+    #define TIME_GAP 2
+  #endif
+  #define TIME_BUF_LEN 8
+#endif
+
+#ifndef DOPPLER_LOW_MEMORY
 #define STRIP_TRAVEL (STRIP_HEIGHT + STRIP_BOTTOM + TIME_GAP + TIME_HEIGHT)
 #define STRIP_EXIT_MS 200
 #define STRIP_ENTER_MS 250
 #define STRIP_SLIDE_MS 100
-
-#if PBL_DISPLAY_WIDTH >= 200
-  #define TIME_HEIGHT 30
-  #define TIME_FONT FONT_KEY_LECO_26_BOLD_NUMBERS_AM_PM
-#else
-  #define TIME_HEIGHT 24
-  #define TIME_FONT FONT_KEY_LECO_20_BOLD_NUMBERS
 #endif
-
-#if PBL_ROUND
-  #define TIME_GAP 4
-#else
-  #define TIME_GAP 2
-#endif
-#define TIME_BUF_LEN 8
 
 // indicator position in 256ths of a segment
 #define SLIDE_UNIT 256
 
+#ifndef DOPPLER_LOW_MEMORY
 // ease-out-back curve constants scaled by 65535
 #define EASE_C1 131070 // 2
 #define EASE_C3 196605 // 3
+#endif
 
 enum StripState {
   StripHidden,
@@ -63,12 +70,15 @@ enum StripState {
 
 static Layer *s_layer;
 static enum StripState s_state = StripHidden;
+#ifndef DOPPLER_LOW_MEMORY
 static bool s_exiting;
 static PropertyAnimation *s_anim;
+#endif
 
 static FrameStripCurrentFrameProvider s_provider;
 static int s_target = -1;
 static int16_t s_pos = 0;
+#ifndef DOPPLER_LOW_MEMORY
 static int16_t s_slide_from;
 static int16_t s_slide_to;
 static Animation *s_slide_anim;
@@ -76,9 +86,12 @@ static Animation *s_slide_anim;
 static int s_cached_num = 0;
 static int s_cached_live = 0;
 static bool s_cached_resident[RADAR_MAX_FRAMES];
+#endif
+#ifndef DOPPLER_NO_FRAME_TIME
 static GFont s_time_font = NULL;
 static char s_cached_text[TIME_BUF_LEN];
 static bool s_cached_time_valid = false;
+#endif
 
 static int prv_clamped_count(int num_frames) {
   if (num_frames < 1) {
@@ -149,8 +162,13 @@ static void prv_draw_rect(GContext *ctx, int width, int height, int num_frames,
   int count = prv_clamped_count(num_frames);
   for (int pos = 0; pos < count; pos++) {
     int x = x0 + pos * pitch;
+#ifndef DOPPLER_LOW_MEMORY
     bool resident = use_cache ? s_cached_resident[pos]
                               : radar_slot_resident(pos);
+#else
+    (void)use_cache;
+    bool resident = radar_slot_resident(pos);
+#endif
     GColor fill = prv_fill_for_slot(pos, live_slot, num_frames, resident);
     graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_rect(ctx, GRect(x, y0, rect_w, STRIP_HEIGHT), 0, GCornerNone);
@@ -233,8 +251,13 @@ static void prv_draw_round(GContext *ctx, int width, int height, int num_frames,
   for (int pos = 0; pos < count; pos++) {
     int32_t a0, a1;
     prv_segment_angles(pos, start, section, gap, &a0, &a1);
+#ifndef DOPPLER_LOW_MEMORY
     bool resident = use_cache ? s_cached_resident[pos]
                               : radar_slot_resident(pos);
+#else
+    (void)use_cache;
+    bool resident = radar_slot_resident(pos);
+#endif
     GColor fill = prv_fill_for_slot(pos, live_slot, num_frames, resident);
     graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_radial(ctx, outer, GOvalScaleModeFitCircle, STRIP_HEIGHT,
@@ -283,6 +306,7 @@ static void prv_draw_indicator(GContext *ctx, int width, int height,
 #endif
 }
 
+#ifndef DOPPLER_NO_FRAME_TIME
 static bool prv_format_slot_time(int slot, char *buf, size_t len) {
   uint32_t raw_time;
   if (!radar_frame_at(slot, NULL, &raw_time)) {
@@ -319,12 +343,14 @@ static void prv_draw_time(GContext *ctx, int width, int height,
   graphics_draw_text(ctx, text, s_time_font, box, GTextOverflowModeFill,
                      GTextAlignmentCenter, NULL);
 }
+#endif
 
 static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
   if (s_state == StripHidden) {
     return;
   }
   GRect bounds = layer_get_bounds(layer);
+#ifndef DOPPLER_LOW_MEMORY
   if (s_state == StripExiting) {
     if (s_cached_num <= 0) {
       return;
@@ -336,6 +362,7 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
     }
     return;
   }
+#endif
   if (!radar_has_layout()) {
     return;
   }
@@ -344,15 +371,18 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
   if (num_frames <= 0 || live_slot < 0 || live_slot >= num_frames) {
     return;
   }
+#ifndef DOPPLER_LOW_MEMORY
   s_cached_num = num_frames;
   s_cached_live = live_slot;
   for (int i = 0; i < num_frames; i++) {
     s_cached_resident[i] = radar_slot_resident(i);
   }
+#endif
   if (s_state == StripShown && s_target >= 0) {
     prv_draw_indicator(ctx, bounds.size.w, bounds.size.h, num_frames);
   }
   prv_draw(ctx, bounds.size.w, bounds.size.h, num_frames, live_slot, false);
+#ifndef DOPPLER_NO_FRAME_TIME
   if (s_target >= 0) {
     char text[TIME_BUF_LEN];
     if (prv_format_slot_time(s_target, text, sizeof(text))) {
@@ -366,8 +396,10 @@ static void prv_frame_strip_update(Layer *layer, GContext *ctx) {
   } else {
     s_cached_time_valid = false;
   }
+#endif
 }
 
+#ifndef DOPPLER_LOW_MEMORY
 static void prv_anim_stopped(Animation *animation, bool finished,
                              void *context) {
   (void)animation;
@@ -440,7 +472,17 @@ static void prv_start_anim(bool exiting) {
     frame_strip_mark_dirty();
   }
 }
+#else
+static void prv_start_anim(bool exiting) {
+  s_state = exiting ? StripHidden : StripShown;
+  if (s_layer) {
+    layer_set_hidden(s_layer, exiting);
+  }
+  frame_strip_mark_dirty();
+}
+#endif
 
+#ifndef DOPPLER_LOW_MEMORY
 // ease-out-back with ~20% overshoot
 static AnimationProgress prv_ease_out_back(AnimationProgress progress) {
   if (progress == 0) {
@@ -516,28 +558,39 @@ static void prv_stop_slide(void) {
     animation_unschedule(s_slide_anim);
   }
 }
+#endif
 
 void frame_strip_set_layer(Layer *layer) {
   if (!layer) {
+#ifndef DOPPLER_LOW_MEMORY
     if (s_anim) {
       animation_unschedule(property_animation_get_animation(s_anim));
     }
     prv_stop_slide();
+#endif
     s_layer = NULL;
     s_target = -1;
+#ifndef DOPPLER_LOW_MEMORY
     s_cached_num = 0;
     s_cached_live = 0;
+#endif
+#ifndef DOPPLER_NO_FRAME_TIME
     s_cached_time_valid = false;
     s_time_font = NULL;
+#endif
     s_state = StripHidden;
     return;
   }
   s_layer = layer;
+#ifndef DOPPLER_NO_FRAME_TIME
   s_time_font = fonts_get_system_font(TIME_FONT);
+#endif
   layer_set_update_proc(s_layer, prv_frame_strip_update);
+#ifndef DOPPLER_LOW_MEMORY
   GRect frame = layer_get_frame(s_layer);
   frame.origin.y = STRIP_TRAVEL;
   layer_set_frame(s_layer, frame);
+#endif
   layer_set_hidden(s_layer, true);
 }
 
@@ -554,13 +607,18 @@ void frame_strip_mark_dirty(void) {
 void frame_strip_refresh_current_frame(void) {
   int target = s_provider ? s_provider() : -1;
   if (target < 0) {
+#ifndef DOPPLER_LOW_MEMORY
     prv_stop_slide();
+#endif
     s_target = -1;
   } else if (s_target < 0) {
+#ifndef DOPPLER_LOW_MEMORY
     prv_stop_slide();
+#endif
     s_target = target;
     s_pos = (int16_t)(target * SLIDE_UNIT);
   } else if (target != s_target) {
+#ifndef DOPPLER_LOW_MEMORY
     bool adjacent = (target == s_target + 1) || (target == s_target - 1);
     s_target = target;
     if (adjacent) {
@@ -569,12 +627,18 @@ void frame_strip_refresh_current_frame(void) {
       prv_stop_slide();
       s_pos = (int16_t)(target * SLIDE_UNIT);
     }
+#else
+    s_target = target;
+    s_pos = (int16_t)(target * SLIDE_UNIT);
+#endif
   }
   frame_strip_mark_dirty();
 }
 
 void frame_strip_layout_obsolete(void) {
+#ifndef DOPPLER_LOW_MEMORY
   prv_stop_slide();
+#endif
   s_target = -1;
   prv_start_anim(true);
 }

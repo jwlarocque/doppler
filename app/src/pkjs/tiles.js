@@ -18,9 +18,9 @@ function screenFor(platform) {
 
 // Must match RADAR_ARENA_BYTES in c/radar.h exactly
 var RADAR_ARENA_BYTES = {
-  aplite: 4000,
-  basalt: 39000,
-  chalk: 37000,
+  aplite: 5000,
+  basalt: 41000,
+  chalk: 39000,
   diorite: 43000,
   flint: 43000,
   emery: 98000,

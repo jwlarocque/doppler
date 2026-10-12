@@ -6,13 +6,14 @@
 #include "frame_strip.h"
 #include "lz4.h"
 #include "map.h"
+#include "platform.h"
 #include "radar.h"
 #include "status_message.h"
 #include "ui.h"
 
 static Window *s_window;
 static Layer *s_map_layer;
-#if !defined(PBL_PLATFORM_APLITE) && !defined(PBL_PLATFORM_BASALT) && !defined(PBL_PLATFORM_CHALK)
+#if !defined(DOPPLER_LOW_MEMORY)
 static Layer *s_status_layer;
 #endif
 static Layer *s_strip_layer;
@@ -310,7 +311,7 @@ static void prv_window_load(Window *window) {
   layer_add_child(window_layer, s_map_layer);
   map_set_layer(s_map_layer);
   radar_set_layer(s_map_layer);
-#if defined(PBL_PLATFORM_APLITE) || defined(PBL_PLATFORM_BASALT) || defined(PBL_PLATFORM_CHALK)
+#if defined(DOPPLER_LOW_MEMORY)
   status_message_set_layer(s_map_layer);
 #else
   s_status_layer = layer_create(bounds);
@@ -341,7 +342,7 @@ static void prv_window_unload(Window *window) {
   s_ui_layer = NULL;
   layer_destroy(s_strip_layer);
   s_strip_layer = NULL;
-#if !defined(PBL_PLATFORM_APLITE) && !defined(PBL_PLATFORM_BASALT) && !defined(PBL_PLATFORM_CHALK)
+#if !defined(DOPPLER_LOW_MEMORY)
   layer_destroy(s_status_layer);
   s_status_layer = NULL;
 #endif

@@ -2,11 +2,13 @@
 #include <string.h>
 
 #include "map.h"
+#include "platform.h"
 #include "radar.h"
 #include "status_message.h"
 
-// can't afford animation on aplite and color 64k platforms
-#if defined(PBL_PLATFORM_APLITE) || defined(PBL_PLATFORM_BASALT) || defined(PBL_PLATFORM_CHALK)
+// can't afford animation on low memory platforms
+// draw into the map layer
+#if defined(DOPPLER_LOW_MEMORY)
   #define STATUS_ANIMATED 0
 #else
   #define STATUS_ANIMATED 1
@@ -38,9 +40,13 @@
 #define STATUS_GAP 2
 
 #if STATUS_ANIMATED
-#define STATUS_TRAVEL (STATUS_HEIGHT + STATUS_GAP + STATUS_TIME_HEIGHT + STATUS_TIME_GAP + STATUS_STRIP_HEIGHT + STATUS_STRIP_BOTTOM)
-#define STATUS_ENTER_MS 250
-#define STATUS_EXIT_MS 200
+  #if defined(DOPPLER_NO_FRAME_TIME)
+    #define STATUS_TRAVEL (STATUS_HEIGHT + STATUS_GAP + STATUS_STRIP_HEIGHT + STATUS_STRIP_BOTTOM)
+  #else
+    #define STATUS_TRAVEL (STATUS_HEIGHT + STATUS_GAP + STATUS_TIME_HEIGHT + STATUS_TIME_GAP + STATUS_STRIP_HEIGHT + STATUS_STRIP_BOTTOM)
+  #endif
+  #define STATUS_ENTER_MS 250
+  #define STATUS_EXIT_MS 200
 #endif
 
 #define STATUS_MAX_TEXT 32
@@ -90,8 +96,12 @@ static int prv_bar_y(int width, int height) {
 #else
   int strip_top = height - STATUS_STRIP_BOTTOM - STATUS_STRIP_HEIGHT;
 #endif
+  #if defined(DOPPLER_NO_FRAME_TIME)
+    return strip_top - STATUS_GAP - STATUS_HEIGHT;
+  #else
   int timestamp_top = strip_top - STATUS_TIME_GAP - STATUS_TIME_HEIGHT;
   return timestamp_top - STATUS_GAP - STATUS_HEIGHT;
+  #endif
 }
 
 static void prv_paint(GContext *ctx, int width, int height, int y) {
