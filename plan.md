@@ -1,19 +1,17 @@
-- perf
-    - prv_px_to_trig in frame_strip.c; can we precompute this (either hardcode or at compile time) so we don't have to do a bunch of division at run time
 - configuration
     - (done) autoplay on/off
     - (done) 2x2 or 4x4 dither on bw
     - (done) palette (NOAA NEXRAD or Dark Sky)
     - (done) number of past frames (minimum 1 - "live", maximum 12)
     - (done) number of nowcast frames (minimum 0, maximum 6)
-    - simple or dither maps (color watches only)
+    - (done) simple or dither maps
     - playback speed (slider between 200ms and 1000ms?)
 - features
     - display status/error line on watch
         - "loading..." when waiting for map or radar layout or frames
         - error when map or radar fetch fails (and fallbacks fail, if any) with brief description
         - error when no phone connection (`connection_service_peek_pebble_app_connection` ? https://developer.repebble.com/docs/c/Foundation/Event_Service/ConnectionService)
-    - zoom in/out animation
+        - better behavior on radar slot chunk send failure
     - store last zoom level in local storage and return to it after closing and re-opening the app
     - controls: if the user has configured only one radar frame (0 nowcast and 1 past - "live"), simplify the controls to be only zoom in/out (disable two-layer system and play/pause button)
     - (done) zoom level 8
@@ -24,16 +22,14 @@
     - data sources
         - rainviewer
     - option to hide controls when not in use (layer 1 has a ~2 second timeout just like layer 2)
+    - zoom in/out animation
 
 - stretch goals
     - custom palettes
     - stored locations
         - same behavior, but using a location configured in Clay and selected with a simple menu on the watch, instead of the user's current location
         - top option in menu: current location
-    - low memory version for aplite and potentially basalt and chalk
-        - disable time display
-        - disable all frame strip animations
-        - other stuff we can turn off?
+    - dynamic radar arena sizing?
     - high contrast mode
         - solid black or white background for action bar
         - two-color position marker

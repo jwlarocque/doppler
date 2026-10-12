@@ -1,5 +1,4 @@
-png_tiles_dither
-png_tiles_simple
+tiles
 magick_tests
 *.pyc
 app/node_modules

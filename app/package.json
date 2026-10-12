@@ -53,7 +53,8 @@
       "Palette",
       "Dither",
       "PastFrames",
-      "NowcastFrames"
+      "NowcastFrames",
+      "MapStyle"
     ],
     "resources": {
       "media": [

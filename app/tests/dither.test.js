@@ -4,8 +4,11 @@ var assert = require('assert');
 var radar = require('../src/pkjs/radar.js');
 
 (function setDitherValidation() {
-  assert.strictEqual(radar.setDither('2x2'), true);
+  radar.setDither('2x2');
+  assert.strictEqual(radar.setDither('2x2'), false);
   assert.strictEqual(radar.setDither('4x4'), true);
+  assert.strictEqual(radar.setDither('4x4'), false);
+  assert.strictEqual(radar.setDither('2x2'), true);
   assert.strictEqual(radar.setDither('nonsense'), false);
   assert.strictEqual(radar.setDither(null), false);
   assert.strictEqual(radar.setDither(undefined), false);

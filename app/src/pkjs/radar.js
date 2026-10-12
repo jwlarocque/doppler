@@ -19,6 +19,9 @@ var ACTIVE_PALETTE = 'darksky';
 
 function setPalette(name) {
   if (name && COLOR_PALETTES[name]) {
+    if (ACTIVE_PALETTE === name) {
+      return false;
+    }
     ACTIVE_PALETTE = name;
     return true;
   }
@@ -44,6 +47,9 @@ var ACTIVE_DITHER = '2x2';
 
 function setDither(name) {
   if (name && DITHER_MATRICES[name]) {
+    if (ACTIVE_DITHER === name) {
+      return false;
+    }
     ACTIVE_DITHER = name;
     return true;
   }
@@ -157,7 +163,7 @@ function ditherToMask(classified, screenW, screenH, matrix) {
 }
 
 function fetchMeta(hostOverride, callback) {
-  var host = hostOverride || config.librewxrHost;
+  var host = hostOverride || config.settings.librewxrHost;
   tiles.fetchJson(host + '/public/weather-maps.json', function (err, meta) {
     if (err) {
       callback(err);

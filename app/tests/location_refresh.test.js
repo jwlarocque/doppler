@@ -33,7 +33,7 @@ Object.defineProperty(globalThis, 'navigator', {
 
 var tiles = require('../src/pkjs/tiles.js');
 var config = require('../src/pkjs/config.js');
-config.useTestFix = false;
+config.settings.useTestFix = false;
 var map = require('../src/pkjs/map.js');
 var radar = require('../src/pkjs/radar.js');
 

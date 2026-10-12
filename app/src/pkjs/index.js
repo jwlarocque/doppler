@@ -70,10 +70,10 @@ function cachedTileFetcher(cache, urlFor) {
 
 function currentFix(callback, allowFallback) {
   var fallback = allowFallback !== false;
-  if (config.useTestFix || typeof navigator === 'undefined' ||
+  if (config.settings.useTestFix || typeof navigator === 'undefined' ||
       !navigator.geolocation) {
     if (fallback) {
-      callback(null, { lat: config.testLat, lon: config.testLon, test: true });
+      callback(null, { lat: config.settings.testLat, lon: config.settings.testLon, test: true });
     } else {
       callback(new Error('no geolocation'));
     }
@@ -86,7 +86,7 @@ function currentFix(callback, allowFallback) {
     function (err) {
       if (fallback) {
         console.log('geolocation failed (' + err.message + '), using test fix');
-        callback(null, { lat: config.testLat, lon: config.testLon, test: true });
+        callback(null, { lat: config.settings.testLat, lon: config.settings.testLon, test: true });
       } else {
         callback(new Error('geolocation failed (' + err.message + ')'));
       }
@@ -407,6 +407,31 @@ function storedFrameLimits() {
   }
 }
 
+// map style from Clay's last saved config page
+function storedMapStyle() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    var saved = JSON.parse(localStorage.getItem('clay-settings') || '{}');
+    if (saved && saved.MapStyle) config.setMapStyle(saved.MapStyle);
+  } catch (e) {
+    console.log('stored map style unreadable: ' + (e && e.message));
+  }
+}
+
+// rebuild and resend only the map (e.g. after a map style change)
+function reloadMap(reason) {
+  if (!lastFix || !lastScreen) return;
+  console.log(reason + ', reloading map');
+  mapCache.clear();
+  var viewport = tiles.viewportFor(lastFix.lat, lastFix.lon, currentZoom, lastScreen);
+  lastViewportFix = lastFix;
+  var gen = generation;
+  sendMapForFix(lastFix, lastScreen, viewport, gen, function (mapOk) {
+    if (!alive(gen)) return;
+    if (mapOk) sendMarkerForFix(lastFix, lastViewportFix);
+  });
+}
+
 // rebuild radar frames without refetching the map
 function reloadRadar(reason) {
   if (!lastFix || !lastScreen) return;
@@ -453,19 +478,35 @@ Pebble.addEventListener('webviewclosed', function (e) {
     radar.setFrameLimits(past, nowcast);
   // radar dither is phone-side only, so it isn't forwarded to the watch
   var dither = settings.Dither !== undefined ? unwrapSetting(settings.Dither) : null;
-  if (!Object.keys(msg).length && !dither && !limitsApplied) return;
+  // map style is phone-side only, so it isn't forwarded to the watch
+  var mapStyle = settings.MapStyle !== undefined ? unwrapSetting(settings.MapStyle) : null;
+  var mapStyleApplied = mapStyle && config.setMapStyle(mapStyle);
+  if (!Object.keys(msg).length && !dither && !limitsApplied && !mapStyleApplied) return;
   if (Object.keys(msg).length) {
     Pebble.sendAppMessage(msg,
       function () { console.log('config sent'); },
       function () { console.log('config send failed'); });
   }
   var ditherApplied = dither && radar.setDither(dither);
-  if (palette && radar.setPalette(palette)) {
+  var paletteApplied = palette && radar.setPalette(palette);
+  var radarStale = paletteApplied || limitsApplied ||
+    (ditherApplied && lastScreen && lastScreen.bw);
+  if (mapStyleApplied && radarStale) {
+    // both changed: full reload sends map then radar sequentially
+    console.log('map and radar config changed, reloading all');
+    mapCache.clear();
+    generation++;
+    activeSession = null;
+    activeCtx = null;
+    loadAndSend(generation);
+  } else if (paletteApplied) {
     reloadRadar('palette changed');
   } else if (limitsApplied) {
     reloadRadar('frame limits changed');
   } else if (ditherApplied && lastScreen && lastScreen.bw) {
     reloadRadar('dither changed');
+  } else if (mapStyleApplied) {
+    reloadMap('map style changed');
   }
 });
 }
@@ -538,6 +579,7 @@ Pebble.addEventListener('ready', function () {
   storedPalette();
   storedDither();
   storedFrameLimits();
+  storedMapStyle();
   currentFix(function (err, fix) {
     lastFix = fix;
     lastScreen = screen;

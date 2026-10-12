@@ -74,6 +74,28 @@
     ]
   },
   {
+    "type": "section",
+    "items": [
+      {
+        "type": "select",
+        "messageKey": "MapStyle",
+        "label": "Map style",
+        "description": "Simple recommended for BW watches and for map-on-top.",
+        "defaultValue": "simple",
+        "options": [
+          {
+            "label": "Simple",
+            "value": "simple"
+          },
+          {
+            "label": "Dithered",
+            "value": "dither"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "type": "submit",
     "defaultValue": "Save"
   }

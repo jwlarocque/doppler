@@ -3,7 +3,7 @@ var config = require('./config.js');
 var png = require('./png.js');
 
 function tileUrl(z, x, y, base) {
-  return (base || config.mapTileBase) + '/' + z + '/' + x + '/' + y + '.png';
+  return (base || config.mapTileBase()) + '/' + z + '/' + x + '/' + y + '.png';
 }
 
 function decodeTile(bytes) {
