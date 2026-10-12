@@ -55,12 +55,6 @@
 // indicator position in 256ths of a segment
 #define SLIDE_UNIT 256
 
-#ifndef DOPPLER_LOW_MEMORY
-// ease-out-back curve constants scaled by 65535
-#define EASE_C1 131070 // 2
-#define EASE_C3 196605 // 3
-#endif
-
 enum StripState {
   StripHidden,
   StripEntering,
@@ -484,15 +478,16 @@ static void prv_start_anim(bool exiting) {
 
 #ifndef DOPPLER_LOW_MEMORY
 // ease-out-back with ~20% overshoot
+// v is in [0, 65535]
 static AnimationProgress prv_ease_out_back(AnimationProgress progress) {
   if (progress == 0) {
     return 0;
   }
-  int32_t u = (int32_t)progress - ANIMATION_NORMALIZED_MAX;
-  int64_t u2 = (int64_t)u * u / ANIMATION_NORMALIZED_MAX;
-  int64_t u3 = u2 * u / ANIMATION_NORMALIZED_MAX;
-  int64_t eased = (int64_t)ANIMATION_NORMALIZED_MAX +
-      (EASE_C3 * u3 + EASE_C1 * u2) / ANIMATION_NORMALIZED_MAX;
+  uint32_t v = (uint32_t)(ANIMATION_NORMALIZED_MAX - (int32_t)progress);
+  uint32_t t1 = (v * v) / ANIMATION_NORMALIZED_MAX;
+  uint32_t t2 = (t1 * v) / ANIMATION_NORMALIZED_MAX;
+  int32_t eased = (int32_t)ANIMATION_NORMALIZED_MAX +
+      (int32_t)(2 * t1) - (int32_t)(3 * t2);
   if (eased < 0) {
     eased = 0;
   }
