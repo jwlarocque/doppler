@@ -5,6 +5,7 @@
 #include "radar.h"
 
 #include "frame_strip.h"
+#include "platform.h"
 
 #ifdef RADAR_ARENA_MALLOC
 static uint8_t *s_arena;
@@ -57,7 +58,7 @@ void radar_init(void) {
 #ifdef RADAR_ARENA_MALLOC
   if (!s_arena) {
     s_arena = malloc(RADAR_ARENA_BYTES);
-    APP_LOG(APP_LOG_LEVEL_INFO, "radar arena %s, heap free %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar arena %s, heap free %d",
             s_arena ? "ok" : "MALLOC FAILED", (int)heap_bytes_free());
   }
 #endif
@@ -79,16 +80,16 @@ void radar_live_begin(int32_t total) {
   s_live_ready = false;
 #ifdef RADAR_ARENA_MALLOC
   if (!s_arena) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar arena missing, length %d", (int)total);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar arena missing, length %d", (int)total);
     return;
   }
 #endif
   if (total <= 0 || total > (int32_t)RADAR_ARENA_BYTES) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar live rejected, length %d", (int)total);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar live rejected, length %d", (int)total);
     return;
   }
   s_live_total = total;
-  APP_LOG(APP_LOG_LEVEL_INFO, "radar live begin, length %d", (int)total);
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar live begin, length %d", (int)total);
 }
 
 void radar_live_chunk(const uint8_t *data, uint16_t length, int32_t index) {
@@ -96,7 +97,7 @@ void radar_live_chunk(const uint8_t *data, uint16_t length, int32_t index) {
     return;
   }
   if (index < 0 || length > (uint16_t)(s_live_total - index)) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar live chunk out of bounds, index %d length %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar live chunk out of bounds, index %d length %d",
             (int)index, (int)length);
     return;
   }
@@ -112,12 +113,12 @@ void radar_live_complete(int32_t uncompressed_length) {
   }
   if (s_live_received != s_live_total ||
       uncompressed_length != RADAR_RAW_BYTES) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar live incomplete, received %d of %d raw %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar live incomplete, received %d of %d raw %d",
             (int)s_live_received, (int)s_live_total, (int)uncompressed_length);
     return;
   }
   s_live_ready = true;
-  APP_LOG(APP_LOG_LEVEL_INFO, "radar live ready, heap free %d", (int)heap_bytes_free());
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar live ready, heap free %d", (int)heap_bytes_free());
   if (s_layer) {
     layer_mark_dirty(s_layer);
   }
@@ -125,7 +126,7 @@ void radar_live_complete(int32_t uncompressed_length) {
 
 bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
   if (!s_live_ready) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar layout before live ready");
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar layout before live ready");
     return false;
   }
 #ifdef RADAR_ARENA_MALLOC
@@ -134,21 +135,21 @@ bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
   }
 #endif
   if (!blob || blob_len < RADAR_LAYOUT_HEADER) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar layout too short %d", (int)blob_len);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar layout too short %d", (int)blob_len);
     return false;
   }
   if (blob[0] != RADAR_LAYOUT_VERSION) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar layout bad version %d", (int)blob[0]);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar layout bad version %d", (int)blob[0]);
     return false;
   }
   int n = blob[1];
   int live = blob[2];
   if (n <= 0 || n > RADAR_MAX_FRAMES || live < 0 || live >= n) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar layout bad n %d live %d", n, live);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar layout bad n %d live %d", n, live);
     return false;
   }
   if (blob_len != (uint16_t)(RADAR_LAYOUT_HEADER + n * RADAR_LAYOUT_ENTRY)) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar layout length mismatch %d n %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar layout length mismatch %d n %d",
             (int)blob_len, n);
     return false;
   }
@@ -158,7 +159,7 @@ bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
     uint32_t off = prv_read_u32(e);
     uint32_t len = prv_read_u32(e + 4);
     if (len == 0 || off != expect_off || off + len > (uint32_t)RADAR_ARENA_BYTES) {
-      APP_LOG(APP_LOG_LEVEL_ERROR, "radar layout bad entry %d off %d len %d",
+      DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar layout bad entry %d off %d len %d",
               i, (int)off, (int)len);
       return false;
     }
@@ -169,7 +170,7 @@ bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
   uint32_t live_off = prv_read_u32(live_entry);
   uint32_t live_len = prv_read_u32(live_entry + 4);
   if (live_len != (uint32_t)s_live_total) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar layout live len %d != %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar layout live len %d != %d",
             (int)live_len, (int)s_live_total);
     return false;
   }
@@ -187,7 +188,7 @@ bool radar_apply_layout(const uint8_t *blob, uint16_t blob_len) {
   s_has_layout = true;
   s_session_done = false;
   s_recv_slot = -1;
-  APP_LOG(APP_LOG_LEVEL_INFO, "radar layout ok n %d live %d heap %d", n, live,
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar layout ok n %d live %d heap %d", n, live,
           (int)heap_bytes_free());
   frame_strip_layout_ready();
   return true;
@@ -203,17 +204,17 @@ bool radar_frame_begin(int32_t slot, int32_t total) {
   }
 #endif
   if (slot < 0 || slot >= s_num_frames || slot == s_live_slot) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar frame bad slot %d", (int)slot);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar frame bad slot %d", (int)slot);
     return false;
   }
   if (total <= 0 || total != (int32_t)s_len[slot] ||
       s_offset[slot] + s_len[slot] > (uint32_t)RADAR_ARENA_BYTES) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar frame bad length slot %d len %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar frame bad length slot %d len %d",
             (int)slot, (int)total);
     return false;
   }
   if (s_resident[slot]) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar frame duplicate slot %d", (int)slot);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar frame duplicate slot %d", (int)slot);
     return false;
   }
   s_recv_slot = slot;
@@ -227,7 +228,7 @@ bool radar_frame_chunk(const uint8_t *data, uint16_t length, int32_t index) {
     return false;
   }
   if (index < 0 || length > (uint16_t)(s_recv_total - index)) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "radar frame chunk oob slot %d index %d len %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar frame chunk oob slot %d index %d len %d",
             (int)s_recv_slot, (int)index, (int)length);
     return false;
   }
@@ -241,7 +242,7 @@ bool radar_frame_chunk(const uint8_t *data, uint16_t length, int32_t index) {
   s_recv_total = 0;
   s_recv_received = 0;
   s_resident[slot] = true;
-  APP_LOG(APP_LOG_LEVEL_INFO, "radar frame %d resident (of %d)", slot,
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar frame %d resident (of %d)", slot,
           s_num_frames);
   frame_strip_refresh_current_frame();
   return true;
@@ -257,7 +258,7 @@ bool radar_is_session_done(void) {
 
 void radar_set_terminal_count(int32_t count) {
   s_session_done = true;
-  APP_LOG(APP_LOG_LEVEL_INFO, "radar session done, frames %d heap %d",
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar session done, frames %d heap %d",
           (int)count, (int)heap_bytes_free());
   if (s_layer) {
     layer_mark_dirty(s_layer);

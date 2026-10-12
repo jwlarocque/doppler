@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "map.h"
+#include "platform.h"
 
 static uint8_t *s_raw;
 static int32_t s_total;
@@ -16,18 +17,18 @@ void map_begin(int32_t total) {
   s_received = 0;
   s_ready = false;
   if (total != MAP_RAW_BYTES) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "map rejected, length %d", (int)total);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "map rejected, length %d", (int)total);
     return;
   }
   s_raw = malloc(MAP_RAW_BYTES);
   if (!s_raw) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "map malloc failed, length %d free %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "map malloc failed, length %d free %d",
             (int)total, (int)heap_bytes_free());
     return;
   }
   memset(s_raw, 0, MAP_RAW_BYTES);
   s_total = total;
-  APP_LOG(APP_LOG_LEVEL_INFO, "map begin, length %d", (int)total);
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "map begin, length %d", (int)total);
 }
 
 void map_chunk(const uint8_t *data, uint16_t length, int32_t index) {
@@ -35,7 +36,7 @@ void map_chunk(const uint8_t *data, uint16_t length, int32_t index) {
     return;
   }
   if (index < 0 || length > s_total - index) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "map chunk out of bounds, index %d length %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "map chunk out of bounds, index %d length %d",
             (int)index, (int)length);
     return;
   }
@@ -45,12 +46,12 @@ void map_chunk(const uint8_t *data, uint16_t length, int32_t index) {
 
 void map_complete(int32_t uncompressed_length) {
   if (!s_raw || s_received != s_total || uncompressed_length != MAP_RAW_BYTES) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "map incomplete, received %d of %d raw %d",
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "map incomplete, received %d of %d raw %d",
             (int)s_received, (int)s_total, (int)uncompressed_length);
     return;
   }
   s_ready = true;
-  APP_LOG(APP_LOG_LEVEL_INFO, "map ready, heap free %d", (int)heap_bytes_free());
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "map ready, heap free %d", (int)heap_bytes_free());
   if (s_layer) {
     layer_mark_dirty(s_layer);
   }

@@ -3,13 +3,14 @@
 #include "comm.h"
 #include "config.h"
 #include "map.h"
+#include "platform.h"
 #include "radar.h"
 #include "status_message.h"
 #include "ui.h"
 
 #define OUTBOX_SIZE 128
 
-#if defined(PBL_PLATFORM_APLITE)
+#ifdef DOPPLER_LOW_MEMORY
 #define INBOX_SIZE 512
 #else
 #define INBOX_SIZE 2048
@@ -29,13 +30,13 @@ void comm_set_config_handler(void (*handler)(uint32_t changed)) {
 static void prv_send_int(uint32_t key, int32_t value) {
   DictionaryIterator *iter = NULL;
   if (app_message_outbox_begin(&iter) != APP_MSG_OK || !iter) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "outbox begin failed");
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "outbox begin failed");
     return;
   }
   dict_write_int32(iter, key, value);
   AppMessageResult rc = app_message_outbox_send();
   if (rc != APP_MSG_OK) {
-    APP_LOG(APP_LOG_LEVEL_ERROR, "outbox send failed %d", (int)rc);
+    DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "outbox send failed %d", (int)rc);
   }
 }
 
@@ -143,12 +144,12 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
 }
 
 static void prv_inbox_dropped(AppMessageResult reason, void *context) {
-  APP_LOG(APP_LOG_LEVEL_ERROR, "inbox dropped, reason %d", (int)reason);
+  DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "inbox dropped, reason %d", (int)reason);
 }
 
 static void prv_outbox_failed(DictionaryIterator *iter, AppMessageResult reason,
                               void *context) {
-  APP_LOG(APP_LOG_LEVEL_ERROR, "outbox failed, reason %d", (int)reason);
+  DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "outbox failed, reason %d", (int)reason);
 }
 
 void comm_init(void) {

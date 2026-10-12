@@ -34,7 +34,7 @@ static int s_zoom = ZOOM_DEFAULT;
 
 static void prv_play_tick(void *context) {
   s_play_index++;
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, "radar tick %d", s_play_index);
+  // DOPPLER_LOG(APP_LOG_LEVEL_DEBUG, "radar tick %d", s_play_index);
   s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
@@ -82,7 +82,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
     int slot = s_play_index % play_count;
     radar = radar_frame_at(slot, &radar_len, NULL);
     if (s_playing && !s_play_timer) {
-      APP_LOG(APP_LOG_LEVEL_INFO, "radar playback start, frames %d", play_count);
+      DOPPLER_LOG(APP_LOG_LEVEL_INFO, "radar playback start, frames %d", play_count);
       s_play_timer = app_timer_register(RADAR_PLAY_MS, prv_play_tick, NULL);
     }
   } else {
@@ -111,7 +111,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
         MAP_HEIGHT, prv_palette_table());
     radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
     if (!radar_ok) {
-      APP_LOG(APP_LOG_LEVEL_ERROR, "radar circular expand failed");
+      DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar circular expand failed");
     }
   }
   if (radar && !circular) {
@@ -125,7 +125,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
       radar_ok = (got == 2 * RADAR_STRIDE * MAP_HEIGHT);
     }
     if (!radar_ok) {
-      APP_LOG(APP_LOG_LEVEL_ERROR, "radar expand failed");
+      DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar expand failed");
     }
   }
   const uint8_t shades[4] = {
@@ -155,7 +155,7 @@ static void prv_map_update(Layer *layer, GContext *ctx) {
       radar_ok = (got == RADAR_RAW_BYTES);
     }
     if (!radar_ok) {
-      APP_LOG(APP_LOG_LEVEL_ERROR, "radar decode failed");
+      DOPPLER_LOG(APP_LOG_LEVEL_ERROR, "radar decode failed");
     }
   }
   // bw watches are rectangular, and our 1bpp data is already in the
@@ -196,7 +196,7 @@ static void prv_try_zoom(int delta) {
     return;
   }
   s_zoom = next;
-  APP_LOG(APP_LOG_LEVEL_INFO, "zoom change to %d", s_zoom);
+  DOPPLER_LOG(APP_LOG_LEVEL_INFO, "zoom change to %d", s_zoom);
   // cancel the timer and restart at frame 0, but keep s_playing so
   // playback resumes via prv_map_update once the new session is done
   if (s_play_timer) {
@@ -272,7 +272,7 @@ static void prv_config_changed(uint32_t changed) {
   }
   if (changed & CONFIG_CHANGED_PALETTE) {
     radar_invalidate();
-    APP_LOG(APP_LOG_LEVEL_INFO, "palette changed to %d", (int)config_get_palette());
+    DOPPLER_LOG(APP_LOG_LEVEL_INFO, "palette changed to %d", (int)config_get_palette());
   }
   if (s_map_layer) {
     layer_mark_dirty(s_map_layer);
@@ -372,7 +372,7 @@ static void prv_deinit(void) {
 int main(void) {
   prv_init();
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
+  DOPPLER_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
 
   app_event_loop();
   prv_deinit();

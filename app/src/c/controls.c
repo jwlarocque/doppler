@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "platform.h"
+
 // playback and zoom action bar
 // layer 1 (frame mode):
 //   - UP/DOWN steps back and forth through radar frames (hold to repeat)
@@ -58,6 +60,12 @@ static void prv_action_bar_revert(void *context) {
 
 static void prv_update_ui_state_frame(bool animated) {
   action_bar_layer_set_click_config_provider(s_action_bar, prv_frame_click_config_provider);
+#ifdef DOPPLER_LOW_MEMORY
+  (void)animated;
+  action_bar_layer_set_icon(s_action_bar, BUTTON_ID_UP, s_icon_left);
+  action_bar_layer_set_icon(s_action_bar, BUTTON_ID_SELECT, s_icon_ellipsis);
+  action_bar_layer_set_icon(s_action_bar, BUTTON_ID_DOWN, s_icon_right);
+#else
   if (animated) {
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_UP, s_icon_left, true);
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_SELECT, s_icon_ellipsis, true);
@@ -67,11 +75,18 @@ static void prv_update_ui_state_frame(bool animated) {
     action_bar_layer_set_icon(s_action_bar, BUTTON_ID_SELECT, s_icon_ellipsis);
     action_bar_layer_set_icon(s_action_bar, BUTTON_ID_DOWN, s_icon_right);
   }
+#endif
 }
 
 static void prv_update_ui_state_zoom(bool animated) {
   action_bar_layer_set_click_config_provider(s_action_bar, prv_zoom_click_config_provider);
   const GBitmap *select = prv_select_icon();
+#ifdef DOPPLER_LOW_MEMORY
+  (void)animated;
+  action_bar_layer_set_icon(s_action_bar, BUTTON_ID_UP, s_icon_minus);
+  action_bar_layer_set_icon(s_action_bar, BUTTON_ID_SELECT, select);
+  action_bar_layer_set_icon(s_action_bar, BUTTON_ID_DOWN, s_icon_plus);
+#else
   if (animated) {
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_UP, s_icon_minus, true);
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_SELECT, select, true);
@@ -81,6 +96,7 @@ static void prv_update_ui_state_zoom(bool animated) {
     action_bar_layer_set_icon(s_action_bar, BUTTON_ID_SELECT, select);
     action_bar_layer_set_icon(s_action_bar, BUTTON_ID_DOWN, s_icon_plus);
   }
+#endif
 }
 
 static void prv_set_action_bar_state(enum ActionBarState state) {
@@ -220,5 +236,9 @@ void controls_refresh_play_icon(void) {
   if (s_action_bar_state == ActionBarStateFrame) {
     return;
   }
+#ifdef DOPPLER_LOW_MEMORY
+  action_bar_layer_set_icon(s_action_bar, BUTTON_ID_SELECT, prv_select_icon());
+#else
   action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_SELECT, prv_select_icon(), true);
+#endif
 }
