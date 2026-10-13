@@ -5,7 +5,8 @@ var clay = null;
 try {
   var Clay = require('@rebble/clay');
   var clayConfig = require('./config.json');
-  clay = new Clay(clayConfig, null, { autoHandleEvents: false });
+  var customClay = require('./custom-clay.js');
+  clay = new Clay(clayConfig, customClay, { autoHandleEvents: false });
 } catch (e) {
   console.log('clay unavailable: ' + (e && e.message));
 }
@@ -44,7 +45,7 @@ var POLL_MS = 5 * 60 * 1000;
 
 // location re-centering is triggered by distance in pixels exceeding this
 // fraction of screen width at this zoom
-var LOCATION_CHECK_ZOOM = 7;
+var LOCATION_CHECK_ZOOM = 8;
 var LOCATION_FRACTION = 0.2;
 
 // tracks data stalesness so it can be dropped (after zoom change)
@@ -100,6 +101,46 @@ function needsRelocation(oldFix, newFix, screen) {
   var distance = tiles.worldPixelDistanceAtZoom(
     oldFix.lat, oldFix.lon, newFix.lat, newFix.lon, LOCATION_CHECK_ZOOM);
   return distance > LOCATION_FRACTION * screen.w;
+}
+
+// custom location helpers
+function parseCoordinate(raw, min, max) {
+  var s = String(raw === undefined || raw === null ? '' : raw).trim();
+  if (!s) return null;
+  var n = Number(s);
+  if (!isFinite(n)) return null;
+  if (n < min || n > max) return null;
+  return n;
+}
+
+function customFixFromSettings(mode, rawLat, rawLon) {
+  if (mode !== 'custom') return null;
+  var lat = parseCoordinate(rawLat, -90, 90);
+  var lon = parseCoordinate(rawLon, -180, 180);
+  if (lat === null || lon === null) return null;
+  return { lat: lat, lon: lon, test: false, custom: true };
+}
+
+function storedLocation() {
+  try {
+    if (typeof localStorage === 'undefined') return { mode: 'current', lat: null, lon: null };
+    var saved = JSON.parse(localStorage.getItem('clay-settings') || '{}');
+    if (!saved) return { mode: 'current', lat: null, lon: null };
+    var mode = saved.Location;
+    if (mode && typeof mode === 'object' && 'value' in mode) mode = mode.value;
+    var rawLat = saved.CustomLat;
+    if (rawLat && typeof rawLat === 'object' && 'value' in rawLat) rawLat = rawLat.value;
+    var rawLon = saved.CustomLon;
+    if (rawLon && typeof rawLon === 'object' && 'value' in rawLon) rawLon = rawLon.value;
+    return {
+      mode: mode === 'custom' ? 'custom' : 'current',
+      lat: parseCoordinate(rawLat, -90, 90),
+      lon: parseCoordinate(rawLon, -180, 180)
+    };
+  } catch (e) {
+    console.log('stored location unreadable: ' + (e && e.message));
+    return { mode: 'current', lat: null, lon: null };
+  }
 }
 
 function compressAndSend(kind, res, fix, screen, detail, gen, onSettled) {
@@ -343,12 +384,18 @@ function pollForUpdate() {
 // poll location then radar data for updates
 function pollForLocationOrUpdate() {
   if (!lastFix || !lastScreen) return;
+  // custom fix; just check for new radar data
+  if (lastFix.custom) {
+    pollForUpdate();
+    return;
+  }
   var gen = generation;
   currentFix(function (fixErr, fix) {
     if (!alive(gen)) return;
     var baseline = lastViewportFix || lastFix;
     if (!fixErr && needsRelocation(baseline, fix, lastScreen)) {
       console.log('relocating for moved user');
+      fix.custom = false;
       lastFix = fix;
       generation++;
       activeSession = null;
@@ -361,6 +408,7 @@ function pollForLocationOrUpdate() {
     } else if (lastViewportFix &&
         (fix.lat !== lastFix.lat || fix.lon !== lastFix.lon)) {
       console.log('location drift, updating marker');
+      fix.custom = false;
       lastFix = fix;
       sendMarkerForFix(fix, lastViewportFix);
     }
@@ -444,6 +492,16 @@ function reloadRadar(reason) {
   sendRadarForFix(lastFix, lastScreen, lastPlatform, viewport, host, generation);
 }
 
+// full rebuild of map then radar
+function reloadAll(reason) {
+  if (!lastFix || !lastScreen) return;
+  console.log(reason + ', reloading all');
+  generation++;
+  activeSession = null;
+  activeCtx = null;
+  loadAndSend(generation);
+}
+
 function unwrapSetting(v) {
   return (v && typeof v === 'object' && 'value' in v) ? v.value : v;
 }
@@ -491,7 +549,29 @@ Pebble.addEventListener('webviewclosed', function (e) {
   // map style is phone-side only, so it isn't forwarded to the watch
   var mapStyle = settings.MapStyle !== undefined ? unwrapSetting(settings.MapStyle) : null;
   var mapStyleApplied = mapStyle && config.setMapStyle(mapStyle);
-  if (!Object.keys(msg).length && !dither && !limitsApplied && !mapStyleApplied) return;
+  // location is phone-side only, so it isn't forwarded to the watch
+  var locMode = settings.Location !== undefined ? unwrapSetting(settings.Location) : undefined;
+  var rawLat = settings.CustomLat !== undefined ? unwrapSetting(settings.CustomLat) : undefined;
+  var rawLon = settings.CustomLon !== undefined ? unwrapSetting(settings.CustomLon) : undefined;
+  var locationTouched = locMode !== undefined || rawLat !== undefined || rawLon !== undefined;
+  var customFix = null;
+  var customInvalid = false;
+  if (locationTouched) {
+    var effMode = locMode !== undefined ? locMode : (lastFix && lastFix.custom ? 'custom' : 'current');
+    var effLat = rawLat !== undefined ? rawLat : (lastFix ? lastFix.lat : undefined);
+    var effLon = rawLon !== undefined ? rawLon : (lastFix ? lastFix.lon : undefined);
+    customFix = customFixFromSettings(effMode, effLat, effLon);
+    customInvalid = effMode === 'custom' && !customFix;
+    if (customInvalid) {
+      console.log('invalid custom location, falling back to current');
+    }
+  }
+  var customChanged = !!customFix &&
+    (!lastFix || !lastFix.custom || lastFix.lat !== customFix.lat || lastFix.lon !== customFix.lon);
+  var backToCurrent = !!locationTouched && !customFix && !customInvalid &&
+    !!(lastFix && lastFix.custom) && locMode === 'current';
+  if (!Object.keys(msg).length && !dither && !limitsApplied && !mapStyleApplied &&
+      !customChanged && !backToCurrent && !customInvalid) return;
   if (Object.keys(msg).length) {
     Pebble.sendAppMessage(msg,
       function () { console.log('config sent'); },
@@ -501,6 +581,26 @@ Pebble.addEventListener('webviewclosed', function (e) {
   var paletteApplied = palette && radar.setPalette(palette);
   var radarStale = paletteApplied || limitsApplied ||
     (ditherApplied && lastScreen && lastScreen.bw);
+  if (customChanged) {
+    // mode or coordinate change always forces a full refresh
+    if (mapStyleApplied) mapCache.clear();
+    lastFix = customFix;
+    reloadAll('location changed');
+    return;
+  }
+  if (backToCurrent || customInvalid) {
+    // fall back to geolocation
+    currentFix(function (fixErr, fix) {
+      if (fixErr) {
+        console.log('location fallback failed: ' + fixErr.message);
+        return;
+      }
+      fix.custom = false;
+      lastFix = fix;
+      reloadAll('location changed');
+    });
+    return;
+  }
   if (mapStyleApplied && radarStale) {
     // both changed: full reload sends map then radar sequentially
     console.log('map and radar config changed, reloading all');
@@ -590,7 +690,27 @@ Pebble.addEventListener('ready', function () {
   storedDither();
   storedFrameLimits();
   storedMapStyle();
+  var stored = storedLocation();
+  if (stored.mode === 'custom' && stored.lat !== null && stored.lon !== null) {
+    lastFix = { lat: stored.lat, lon: stored.lon, test: false, custom: true };
+    lastScreen = screen;
+    lastPlatform = platform;
+    loadAndSend(generation);
+    if (typeof setInterval !== 'undefined' && pollTimer === null) {
+      pollTimer = setInterval(function () {
+        try {
+          pollForLocationOrUpdate();
+        } catch (e) {
+          console.log('refresh poll failed: ' + e.message);
+        }
+      }, POLL_MS);
+      // do not hold a node test process open for the poll timer
+      if (pollTimer && typeof pollTimer.unref === 'function') pollTimer.unref();
+    }
+    return;
+  }
   currentFix(function (err, fix) {
+    if (fix) fix.custom = false;
     lastFix = fix;
     lastScreen = screen;
     lastPlatform = platform;
@@ -620,8 +740,18 @@ if (typeof module !== 'undefined' && module.exports) {
     LOCATION_FRACTION: LOCATION_FRACTION,
     isValidZoom: isValidZoom,
     needsRelocation: needsRelocation,
+    parseCoordinate: parseCoordinate,
+    customFixFromSettings: customFixFromSettings,
+    storedLocation: storedLocation,
     __testonly_pollForUpdate: pollForUpdate,
     __testonly_pollForLocationOrUpdate: pollForLocationOrUpdate,
+    __testonly_setState: function (s) {
+      if (!s) return;
+      if ('lastFix' in s) lastFix = s.lastFix;
+      if ('lastScreen' in s) lastScreen = s.lastScreen;
+      if ('lastViewportFix' in s) lastViewportFix = s.lastViewportFix;
+      if ('lastMeta' in s) lastMeta = s.lastMeta;
+    },
     __testonly_getState: function () {
       return {
         lastMeta: lastMeta,

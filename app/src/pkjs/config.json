@@ -105,6 +105,59 @@
     ]
   },
   {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Location"
+      },
+      {
+        "type": "select",
+        "messageKey": "Location",
+        "label": "Location",
+        "defaultValue": "current",
+        "options": [
+          {
+            "label": "Current",
+            "value": "current"
+          },
+          {
+            "label": "Custom",
+            "value": "custom"
+          }
+        ]
+      },
+      {
+        "type": "input",
+        "messageKey": "CustomLat",
+        "label": "Custom Latitude",
+        "defaultValue": "",
+        "description": "Decimal degrees, -90 to 90, e.g. 41.85",
+        "attributes": {
+          "placeholder": "41.85",
+          "type": "number",
+          "step": "any",
+          "min": "-90",
+          "max": "90"
+        }
+      },
+      {
+        "type": "input",
+        "messageKey": "CustomLon",
+        "label": "Custom Longitude",
+        "defaultValue": "",
+        "description": "Decimal degrees, -180 to 180, e.g. -87.65",
+        "attributes": {
+          "placeholder": "-87.65",
+          "type": "number",
+          "step": "any",
+          "min": "-180",
+          "max": "180"
+        }
+      }
+    ]
+  },
+  {
     "type": "submit",
     "defaultValue": "Save"
   }

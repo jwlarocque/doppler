@@ -62,27 +62,27 @@ var index = require('../src/pkjs/index.js');
 
 // at zoom 7, 360 deg lon = 32768 px (~91 px/deg at equator)
 (function threshold() {
-  assert.strictEqual(index.LOCATION_CHECK_ZOOM, 7);
+  assert.strictEqual(index.LOCATION_CHECK_ZOOM, 8);
   assert.strictEqual(index.LOCATION_FRACTION, 0.2);
   var screen = tiles.screenFor('aplite'); // w=144 -> 28.8px
   var oldFix = { lat: 0, lon: 0 };
   // 0.2 deg lon ~ 18.2px: no move
   assert.strictEqual(
-    index.needsRelocation(oldFix, { lat: 0, lon: 0.2 }, screen), false);
+    index.needsRelocation(oldFix, { lat: 0, lon: 0.1 }, screen), false);
   // 0.5 deg lon ~ 45.5px: move
   assert.strictEqual(
-    index.needsRelocation(oldFix, { lat: 0, lon: 0.5 }, screen), true);
+    index.needsRelocation(oldFix, { lat: 0, lon: 0.25 }, screen), true);
   // diagonal: 0.15 deg each ~ 19.3px total
   assert.strictEqual(
-    index.needsRelocation(oldFix, { lat: 0.15, lon: 0.15 }, screen), false);
+    index.needsRelocation(oldFix, { lat: 0.075, lon: 0.075 }, screen), false);
   assert.strictEqual(
-    index.needsRelocation(oldFix, { lat: 0.3, lon: 0.3 }, screen), true);
+    index.needsRelocation(oldFix, { lat: 0.15, lon: 0.15 }, screen), true);
   // wider screen has a wider threshold
   var gabbro = tiles.screenFor('gabbro'); // w=260 -> 52px
   assert.strictEqual(
-    index.needsRelocation(oldFix, { lat: 0, lon: 0.5 }, gabbro), false);
+    index.needsRelocation(oldFix, { lat: 0, lon: 0.25 }, gabbro), false);
   assert.strictEqual(
-    index.needsRelocation(oldFix, { lat: 0, lon: 0.7 }, gabbro), true);
+    index.needsRelocation(oldFix, { lat: 0, lon: 0.35 }, gabbro), true);
   // missing inputs never trigger
   assert.strictEqual(index.needsRelocation(null, oldFix, screen), false);
 })();

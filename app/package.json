@@ -55,7 +55,10 @@
       "Dither",
       "PastFrames",
       "NowcastFrames",
-      "MapStyle"
+      "MapStyle",
+      "Location",
+      "CustomLat",
+      "CustomLon"
     ],
     "resources": {
       "media": [
